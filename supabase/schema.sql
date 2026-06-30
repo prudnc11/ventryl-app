@@ -6,18 +6,23 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ── Profiles (extends auth.users) ───────────────────────────────────
+-- Every user has one profile. No role is selected at signup.
+-- A user becomes a depot owner simply by adding a depot (after KYC).
+-- is_admin is set manually by the platform operator — never at signup.
+--
+-- kyc_status  = individual/company KYC (required before creating a depot)
+-- Depot-level verification is tracked separately via kyb_status on depots.
 CREATE TABLE IF NOT EXISTS profiles (
-  id            UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  id            UUID        PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   full_name     TEXT        NOT NULL,
   company_name  TEXT        NOT NULL DEFAULT '',
-  role          TEXT        NOT NULL DEFAULT 'buyer'
-                  CHECK (role IN ('buyer', 'depot_owner', 'admin')),
   phone         TEXT,
   state         TEXT,
   lga           TEXT,
   cac_number    TEXT,
-  kyb_status    TEXT        NOT NULL DEFAULT 'pending'
-                  CHECK (kyb_status IN ('pending', 'submitted', 'verified', 'rejected')),
+  kyc_status    TEXT        NOT NULL DEFAULT 'pending'
+                  CHECK (kyc_status IN ('pending', 'submitted', 'verified', 'rejected')),
+  is_admin      BOOLEAN     NOT NULL DEFAULT false,
   vcs_score     INTEGER     NOT NULL DEFAULT 500,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -205,12 +210,11 @@ CREATE TABLE IF NOT EXISTS price_history (
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
-  INSERT INTO profiles (id, full_name, company_name, role, phone)
+  INSERT INTO profiles (id, full_name, company_name, phone)
   VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'full_name', 'New User'),
     COALESCE(NEW.raw_user_meta_data->>'company_name', ''),
-    COALESCE(NEW.raw_user_meta_data->>'role', 'buyer'),
     NEW.raw_user_meta_data->>'phone'
   )
   ON CONFLICT (id) DO NOTHING;

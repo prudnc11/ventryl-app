@@ -229,15 +229,9 @@ function LoginScreen({ onSwitch }) {
 }
 
 /* ── Signup Screen ────────────────────────────────────────────────── */
-const ROLES = [
-  { id: 'buyer', label: 'Fuel Buyer', sub: 'Petrol station, aviation, industrial' },
-  { id: 'depot_owner', label: 'Depot Owner', sub: 'Register and manage your depot' },
-];
-
 function SignupScreen({ onSwitch }) {
   const [form, setForm] = useState({
-    fullName: '', companyName: '', role: 'buyer',
-    email: '', phone: '', password: '', confirmPassword: '',
+    fullName: '', companyName: '', email: '', phone: '', password: '', confirmPassword: '',
   });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -247,14 +241,8 @@ function SignupScreen({ onSwitch }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (form.password !== form.confirmPassword) {
-      setErr('Passwords do not match.');
-      return;
-    }
-    if (form.password.length < 8) {
-      setErr('Password must be at least 8 characters.');
-      return;
-    }
+    if (form.password !== form.confirmPassword) { setErr('Passwords do not match.'); return; }
+    if (form.password.length < 8) { setErr('Password must be at least 8 characters.'); return; }
     setLoading(true);
     setErr('');
     try {
@@ -263,7 +251,6 @@ function SignupScreen({ onSwitch }) {
         password: form.password,
         fullName: form.fullName,
         companyName: form.companyName,
-        role: form.role,
         phone: form.phone,
       });
       setSuccess(true);
@@ -294,21 +281,6 @@ function SignupScreen({ onSwitch }) {
       {!isConfigured && <SetupNotice />}
       <form onSubmit={handleSubmit}>
         <ErrorBanner msg={err} />
-
-        {/* Role selector */}
-        <div style={{ marginBottom: '20px' }}>
-          <div style={{ fontSize: '10px', fontWeight: 700, color: T.gray400, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>I am a</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            {ROLES.map(r => (
-              <button key={r.id} type="button" onClick={() => setForm(f => ({ ...f, role: r.id }))}
-                style={{ padding: '12px', border: `2px solid ${form.role === r.id ? T.black : T.gray200}`, background: form.role === r.id ? T.black : T.white, cursor: 'pointer', textAlign: 'left', transition: 'all 0.1s' }}>
-                <div style={{ fontSize: '12px', fontWeight: 800, color: form.role === r.id ? T.white : T.black }}>{r.label}</div>
-                <div style={{ fontSize: '10px', color: form.role === r.id ? '#888' : T.gray400, marginTop: '2px' }}>{r.sub}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 12px' }}>
           <div style={{ gridColumn: '1/-1' }}>
             <Field label="Full Name" value={form.fullName} onChange={set('fullName')} placeholder="Emeka Chukwuma" required />
@@ -325,13 +297,11 @@ function SignupScreen({ onSwitch }) {
           <Field label="Password" type="password" value={form.password} onChange={set('password')} placeholder="••••••••" required hint="Minimum 8 characters" />
           <Field label="Confirm Password" type="password" value={form.confirmPassword} onChange={set('confirmPassword')} placeholder="••••••••" required />
         </div>
-
         <div style={{ fontSize: '10px', color: T.gray400, fontWeight: 600, marginBottom: '20px', lineHeight: 1.5 }}>
           By creating an account you agree to Ventryl's{' '}
           <span style={{ color: T.black, fontWeight: 800 }}>Terms of Service</span> and{' '}
           <span style={{ color: T.black, fontWeight: 800 }}>Privacy Policy</span>.
         </div>
-
         <Btn type="submit" loading={loading}
           disabled={!form.fullName || !form.companyName || !form.email || !form.password || !form.confirmPassword || !isConfigured}>
           Create Account →

@@ -14,12 +14,12 @@ function assertOk(error, context) {
 
 export const auth = {
   /** Sign up a new user and create their profile */
-  async signUp({ email, password, fullName, companyName, role, phone }) {
+  async signUp({ email, password, fullName, companyName, phone }) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { full_name: fullName, company_name: companyName, role, phone },
+        data: { full_name: fullName, company_name: companyName, phone },
       },
     });
     assertOk(error, 'auth.signUp');
@@ -133,7 +133,10 @@ export const depots = {
     return data;
   },
 
-  /** Create a new depot (KYB pending by default) */
+  /**
+   * Create a new depot. Caller must have kyc_status = 'verified' on their
+   * profile before invoking — the depot itself starts with kyb_status = 'pending'.
+   */
   async create({ ownerId, name, location, state, lga, address, licenseNumber, licenseExpiry, capacity, products }) {
     const { data: depot, error: depotErr } = await supabase
       .from('depots')
