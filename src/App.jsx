@@ -247,7 +247,7 @@ const _deliveryQuoteStore = {};
 
 /* Orders placed during the session by the buyer */
 const _placedOrdersStore = []; // [{id,buyer,depot,product,vol,value,status,placed,trucks,...,meta:{}}]
-let _nextOrderSeq = 845; // next available order suffix
+let _nextOrderSeq = 845 + Math.floor((Date.now() % 1000000) / 100); // unique per session
 
 /* ── Order lifecycle stores (persist across navigation) ── */
 const _orderStatusStore    = {};  // orderId -> status string
@@ -575,7 +575,9 @@ function OrderFlow({onDone,isMobile}) {
         <div>
           <div style={{fontSize:"16px",fontWeight:800,color:T.black,marginBottom:"14px"}}>Choose a Depot</div>
           {[...DEPOTS].sort((a,b)=>a.pms-b.pms).map((d,i)=>(
-            <div key={d.id} onClick={()=>handleSelectDepot(d)} style={{border:`2px solid ${sel?.id===d.id?T.green:T.gray100}`,background:T.white,padding:"16px",cursor:"pointer",marginBottom:"10px",transition:"border-color 0.15s"}}
+            <div key={d.id} role="button" tabIndex={0} aria-pressed={sel?.id===d.id}
+              onClick={()=>handleSelectDepot(d)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" ")handleSelectDepot(d);}}
+              style={{border:`2px solid ${sel?.id===d.id?T.green:T.gray100}`,background:T.white,padding:"16px",cursor:"pointer",marginBottom:"10px",transition:"border-color 0.15s"}}
               onMouseEnter={e=>{if(sel?.id!==d.id)e.currentTarget.style.borderColor=T.gray400}}
               onMouseLeave={e=>{if(sel?.id!==d.id)e.currentTarget.style.borderColor=T.gray100}}>
               <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:"12px"}}>
@@ -668,7 +670,8 @@ function OrderFlow({onDone,isMobile}) {
                 ].map(opt=>{
                   const active=deliveryMode===opt.id;
                   return (
-                    <div key={opt.id} onClick={()=>setDeliveryMode(opt.id)}
+                    <div key={opt.id} role="button" tabIndex={0} aria-pressed={active}
+                      onClick={()=>setDeliveryMode(opt.id)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" ")setDeliveryMode(opt.id);}}
                       style={{border:`2px solid ${active?T.black:T.gray200}`,background:active?T.black:T.white,padding:"14px 16px",cursor:"pointer",transition:"all 0.15s"}}>
                       <div style={{fontSize:"22px",marginBottom:"6px",lineHeight:1}}>{opt.icon}</div>
                       <div style={{fontSize:"13px",fontWeight:800,color:active?T.white:T.black,marginBottom:"3px"}}>{opt.title}</div>
@@ -907,7 +910,7 @@ function OrderFlow({onDone,isMobile}) {
             _placedOrdersStore.push(newOrder);
             setSubmittedId(orderId);
             setDone(true);
-          }} style={{background:T.green,color:T.white,border:"none",padding:"14px",fontSize:"14px",fontWeight:800,cursor:"pointer",fontFamily:F,width:"100%",minHeight:"48px"}}>
+          }} disabled={totalValue>25830000} style={{background:totalValue>25830000?T.gray200:T.green,color:totalValue>25830000?T.gray400:T.white,border:"none",padding:"14px",fontSize:"14px",fontWeight:800,cursor:totalValue>25830000?"not-allowed":"pointer",fontFamily:F,width:"100%",minHeight:"48px"}}>
             Confirm & Pay ₦{totalValue.toLocaleString()}
           </button>
         </div>
@@ -2523,7 +2526,7 @@ function CreateDepotFlow({onSubmit,onCancel,isMobile}) {
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const toggleProduct=p=>set("products",form.products.includes(p)?form.products.filter(x=>x!==p):[...form.products,p]);
   const canStep1=form.name.trim()&&form.location.trim();
-  const canStep2=form.license.trim()&&form.products.length>0;
+  const canStep2=form.license.trim()&&form.expiry&&form.products.length>0;
   const LABELS=["Details","License","Review"];
   const Inp=({label,k,type="text",hint,placeholder})=>(
     <div style={{marginBottom:"16px"}}>
