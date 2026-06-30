@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
+import { useAuthStore } from './store/authStore';
+import { AuthScreens } from './screens/Auth';
 
 /* ════════════════════════════════════════════
    DESIGN TOKENS
@@ -5202,7 +5204,7 @@ function UnifiedDash({depots,onOrder,onDepotClick,onNewDepot,onViewOrder,isMobil
 /* ════════════════════════════════════════════
    PLATFORM SIDEBAR
 ════════════════════════════════════════════ */
-function PlatformSidebar({activeView,setActiveView,depots,onNewDepot,identity,isMobile}) {
+function PlatformSidebar({activeView,setActiveView,depots,onNewDepot,identity,isMobile,onSignOut}) {
   const ITEMS=[
     {id:"dash",label:"Dashboard",icon:"M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"},
     {id:"market",label:"Price Discovery",icon:"M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"},
@@ -5288,13 +5290,18 @@ function PlatformSidebar({activeView,setActiveView,depots,onNewDepot,identity,is
         );})()}
       </nav>
       <div style={{padding:"14px 20px",borderTop:"1px solid #1A1A1A"}}>
-        <div style={{display:"flex",alignItems:"center",gap:"9px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:"9px",marginBottom:onSignOut?"10px":"0"}}>
           <div style={{width:"30px",height:"30px",background:identity.bg||T.green,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"11px",fontWeight:800,color:identity.textColor||T.black,flexShrink:0}}>{identity.initials||"?"}</div>
           <div style={{minWidth:0}}>
             <div style={{fontSize:"11px",fontWeight:800,color:T.white,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{identity.name||""}</div>
             <div style={{fontSize:"10px",color:"#555"}}>{identity.role||""}</div>
           </div>
         </div>
+        {onSignOut&&(
+          <button onClick={onSignOut} style={{width:"100%",padding:"8px",background:"transparent",border:"1px solid #2A2A2A",color:"#666",fontFamily:F,fontSize:"11px",fontWeight:700,cursor:"pointer",textAlign:"center",letterSpacing:"0.04em"}}>
+            Sign Out
+          </button>
+        )}
       </div>
     </div>
   );
@@ -5303,7 +5310,7 @@ function PlatformSidebar({activeView,setActiveView,depots,onNewDepot,identity,is
 /* ════════════════════════════════════════════
    VENTRYL PLATFORM
 ════════════════════════════════════════════ */
-function VentrylPlatform({bp}) {
+function VentrylPlatform({bp, user, onSignOut}) {
   const {isMobile}=bp;
   const [activeView,setActiveView]=useState("dash");
   const [depots,setDepots]=useState([
@@ -5450,17 +5457,17 @@ function VentrylPlatform({bp}) {
     pendingKyb?{bg:T.amberLight,color:"#8A5C00",label:`${pendingKyb} KYB pending`}:{bg:T.gray50,color:T.black,label:`${depots.length} depot${depots.length!==1?"s":""}`},
   ];
 
-  const IDENTITY={initials:"EC",bg:T.green,textColor:T.black,name:"Emeka Chukwuma",role:"Account Owner"};
+  const IDENTITY=user||{initials:"EC",bg:T.green,textColor:T.black,name:"Emeka Chukwuma",role:"Account Owner"};
   return (
     <div style={{display:"flex",minHeight:"100vh",fontFamily:F}}>
-      <PlatformSidebar activeView={activeView} setActiveView={navigate} depots={depots} onNewDepot={()=>setCreatingDepot(true)} identity={IDENTITY} isMobile={isMobile}/>
+      <PlatformSidebar activeView={activeView} setActiveView={navigate} depots={depots} onNewDepot={()=>setCreatingDepot(true)} identity={IDENTITY} isMobile={isMobile} onSignOut={onSignOut}/>
       <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
         <Topbar crumb={getCrumb()} isMobile={isMobile} portalLabel="Platform" pills={pills}/>
         <div style={{padding:isMobile?"14px 16px":"24px 28px",paddingBottom:isMobile?"80px":"24px",flex:1,overflowY:"auto"}}>
           {renderView()}
         </div>
       </div>
-      {isMobile&&<PlatformSidebar activeView={activeView} setActiveView={navigate} depots={depots} onNewDepot={()=>setCreatingDepot(true)} identity={IDENTITY} isMobile={true}/>}
+      {isMobile&&<PlatformSidebar activeView={activeView} setActiveView={navigate} depots={depots} onNewDepot={()=>setCreatingDepot(true)} identity={IDENTITY} isMobile={true} onSignOut={onSignOut}/>}
     </div>
   );
 }
@@ -5468,12 +5475,53 @@ function VentrylPlatform({bp}) {
 /* ════════════════════════════════════════════
    ROOT
 ════════════════════════════════════════════ */
+const GLOBAL_STYLES=`@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap'); *{box-sizing:border-box;margin:0;padding:0;} ::-webkit-scrollbar{width:4px;} ::-webkit-scrollbar-thumb{background:#D3D3D3;} input[type=range]{-webkit-appearance:none;appearance:none;height:4px;background:#EBEBEB;border-radius:2px;outline:none;} input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;background:#000;border-radius:50%;cursor:pointer;} input[type=number]::-webkit-inner-spin-button{opacity:1;} @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.7}}`;
+
+function LoadingScreen() {
+  return (
+    <div style={{minHeight:"100vh",background:T.black,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:F}}>
+      <style>{GLOBAL_STYLES}</style>
+      <div style={{textAlign:"center"}}>
+        <div style={{width:"40px",height:"40px",background:T.green,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}>
+          <span style={{fontSize:"18px",fontWeight:800,color:T.black}}>V</span>
+        </div>
+        <div style={{fontSize:"12px",fontWeight:700,color:"#444",letterSpacing:"0.08em",textTransform:"uppercase"}}>Loading…</div>
+      </div>
+    </div>
+  );
+}
+
 export default function VentrylApp() {
   const bp=useBreakpoint();
+  const {session,profile,loading,init,signOut}=useAuthStore();
+
+  useEffect(()=>{init();},[]);
+
+  if(loading) return <LoadingScreen/>;
+
+  if(!session) return (
+    <>
+      <style>{GLOBAL_STYLES}</style>
+      <AuthScreens/>
+    </>
+  );
+
+  // Derive sidebar identity from real profile
+  const initials=profile?.full_name
+    ?profile.full_name.split(" ").map(n=>n[0]).join("").slice(0,2).toUpperCase()
+    :"?";
+  const user={
+    initials,
+    bg:T.green,
+    textColor:T.black,
+    name:profile?.full_name||"",
+    role:profile?.company_name||"",
+  };
+
   return (
     <div style={{fontFamily:F,background:T.gray50,minHeight:"100vh"}}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap'); *{box-sizing:border-box;margin:0;padding:0;} ::-webkit-scrollbar{width:4px;} ::-webkit-scrollbar-thumb{background:#D3D3D3;} input[type=range]{-webkit-appearance:none;appearance:none;height:4px;background:#EBEBEB;border-radius:2px;outline:none;} input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;background:#000;border-radius:50%;cursor:pointer;} input[type=number]::-webkit-inner-spin-button{opacity:1;} @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.7}}`}</style>
-      <VentrylPlatform bp={bp}/>
+      <style>{GLOBAL_STYLES}</style>
+      <VentrylPlatform bp={bp} user={user} onSignOut={signOut}/>
     </div>
   );
 }
