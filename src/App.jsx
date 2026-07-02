@@ -1,7 +1,14 @@
 import { useState, useEffect } from "react";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
 import { useAuthStore } from './store/authStore';
+import { useVentrylStore } from './store/ventrylStore';
 import { AuthScreens } from './screens/Auth';
+import { useOrderRealtime, useDepotInboxRealtime, useProfileRealtime } from './lib/realtime';
+import { kyc as kycApi, kyb as kybApi, notifications as notifApi, depots as depotsApi, profiles as profilesApi } from './lib/api';
+import { supabase } from './lib/supabase';
+import { printWaybill, printInvoice } from './lib/documents';
+import { AdminPanel } from './screens/AdminPanel';
+import { openPaystackPopup, verifyAndCreditWallet, FUND_PRESETS } from './lib/payment';
 
 /* ════════════════════════════════════════════
    DESIGN TOKENS
@@ -1049,11 +1056,14 @@ function BuyerDash({onOrder,isMobile}) {
 
 function BuyerMarketplace({onOrder,isMobile}) {
   const [sort,setSort]=useState("price");
-  const sorted=[...DEPOTS].sort((a,b)=>sort==="price"?a.pms-b.pms:sort==="rating"?b.rating-a.rating:b.stock-a.stock);
+  const {marketDepots,marketDepotsLoaded,loadMarketDepots}=useVentrylStore();
+  useEffect(()=>{if(!marketDepotsLoaded)loadMarketDepots();},[]);
+  const source=marketDepotsLoaded&&marketDepots.length?marketDepots:DEPOTS;
+  const sorted=[...source].filter(d=>d.pms!=null||d.ago!=null).sort((a,b)=>sort==="price"?(a.pms??9999)-(b.pms??9999):sort==="rating"?b.rating-a.rating:b.stock-a.stock);
   return (
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px",flexWrap:"wrap",gap:"8px"}}>
-        <div><div style={{fontSize:"14px",fontWeight:800,color:T.black}}>Price Discovery</div><div style={{fontSize:"11px",color:T.gray400,marginTop:"2px"}}>4 depots · NMDPRA verified</div></div>
+        <div><div style={{fontSize:"14px",fontWeight:800,color:T.black}}>Price Discovery</div><div style={{fontSize:"11px",color:T.gray400,marginTop:"2px"}}>{sorted.length} depot{sorted.length!==1?"s":""} · NMDPRA verified</div></div>
         <div style={{display:"flex",gap:"6px"}}>
           {["price","rating","stock"].map(s=>(
             <button key={s} onClick={()=>setSort(s)} style={{background:sort===s?T.black:T.white,color:sort===s?T.white:T.gray600,border:`1px solid ${sort===s?T.black:T.gray200}`,padding:"5px 10px",fontSize:"10px",fontWeight:700,cursor:"pointer",fontFamily:F,borderRadius:"20px",textTransform:"capitalize"}}>{s}</button>
@@ -1117,22 +1127,52 @@ function BuyerMarketplace({onOrder,isMobile}) {
 }
 
 function BuyerWallet({isMobile}) {
+  const {user:authUser,profile:authProfile}=useAuthStore();
+  const {walletNGN,loadWallet}=useVentrylStore();
+  useEffect(()=>{if(authUser?.id)loadWallet(authUser.id);},[authUser?.id]);
   const [currency,setCurrency]=useState("NGN");
   const [showFund,setShowFund]=useState(false);
   const [showWithdraw,setShowWithdraw]=useState(false);
   const [fundAmt,setFundAmt]=useState("");
   const [fundDone,setFundDone]=useState(false);
+  const [fundErr,setFundErr]=useState("");
+  const [fundLoading,setFundLoading]=useState(false);
   const [withdrawAmt,setWithdrawAmt]=useState("");
   const [withdrawDone,setWithdrawDone]=useState(false);
 
+  const handlePaystackFund=async()=>{
+    const amt=parseInt(fundAmt);
+    if(!amt||amt<1000){setFundErr("Minimum top-up is ₦1,000");return;}
+    if(!authUser||!authProfile?.email){setFundErr("Please complete your profile before topping up.");return;}
+    setFundLoading(true);
+    setFundErr("");
+    try{
+      await openPaystackPopup({
+        email:authProfile.email,
+        amountKobo:amt*100,
+        metadata:{"user_id":authUser.id,"purpose":"wallet_topup"},
+        onSuccess:async(response)=>{
+          try{
+            await verifyAndCreditWallet(response.reference,authUser.id);
+            await loadWallet(authUser.id);
+            setFundDone(true);
+          }catch(e){
+            setFundErr(e.message||"Payment verified but wallet credit failed. Contact support.");
+          }finally{
+            setFundLoading(false);
+          }
+        },
+        onClose:()=>{setFundLoading(false);},
+      });
+    }catch(e){
+      setFundErr(e.message||"Payment failed");
+      setFundLoading(false);
+    }
+  };
+
   const CURRENCIES={
-    NGN:{symbol:"₦",label:"Nigerian Naira",balance:25830000,fmt:(n)=>`₦${n.toLocaleString()}`,rate:null,flag:"🇳🇬",
-      txn:[
-        {id:"TXN-4421",desc:"Wallet Top-up",amount:"+₦150,000,000",date:"Mar 10",type:"credit"},
-        {id:"TXN-4420",desc:"Order VTL-00841 — Payment Hold",amount:"-₦71,700,000",date:"Mar 8",type:"debit"},
-        {id:"TXN-4419",desc:"Order VTL-00838 — Payment Hold",amount:"-₦52,470,000",date:"Mar 10",type:"debit"},
-        {id:"TXN-4418",desc:"Order VTL-00841 — Payment Released",amount:"₦71,700,000",date:"Mar 8",type:"paid"},
-      ]},
+    NGN:{symbol:"₦",label:"Nigerian Naira",balance:walletNGN?.balanceNGN??0,fmt:(n)=>`₦${n.toLocaleString('en-NG')}`,rate:null,flag:"🇳🇬",
+      txn:walletNGN?.txn??[],},
     USD:{symbol:"$",label:"US Dollar",balance:15770.42,fmt:(n)=>`$${n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`,rate:"1 USD = ₦1,638",flag:"🇺🇸",
       txn:[
         {id:"TXN-D421",desc:"Wallet Funding (Bank Transfer)",amount:"+$10,000.00",date:"Mar 10",type:"credit"},
@@ -1222,29 +1262,43 @@ function BuyerWallet({isMobile}) {
       {/* Fund modal */}
       {showFund&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px"}}>
-          <div style={{background:T.white,maxWidth:"400px",width:"100%",padding:"28px"}}>
+          <div style={{background:T.white,maxWidth:"420px",width:"100%",padding:"28px"}}>
             {fundDone?(
               <div style={{textAlign:"center"}}>
                 <div style={{fontSize:"32px",marginBottom:"14px"}}>✓</div>
-                <div style={{fontSize:"16px",fontWeight:800,color:T.black,marginBottom:"8px"}}>Funding Initiated</div>
-                <div style={{fontSize:"12px",color:T.gray400,marginBottom:"20px"}}>Your {currency} wallet will be credited within 1–2 business minutes.</div>
-                <button onClick={()=>setShowFund(false)} style={{background:T.black,color:T.white,border:"none",padding:"11px",fontSize:"13px",fontWeight:800,cursor:"pointer",fontFamily:F,width:"100%"}}>Done</button>
+                <div style={{fontSize:"16px",fontWeight:800,color:T.black,marginBottom:"8px"}}>Wallet Funded!</div>
+                <div style={{fontSize:"12px",color:T.gray400,marginBottom:"20px"}}>Your NGN wallet has been credited. Balance will refresh on next login if not shown immediately.</div>
+                <button onClick={()=>{setShowFund(false);setFundDone(false);setFundAmt("");}} style={{background:T.black,color:T.white,border:"none",padding:"11px",fontSize:"13px",fontWeight:800,cursor:"pointer",fontFamily:F,width:"100%"}}>Done</button>
               </div>
             ):(
               <>
-                <div style={{fontSize:"16px",fontWeight:800,color:T.black,marginBottom:"4px"}}>Fund {cur.label} Wallet</div>
-                <div style={{fontSize:"11px",color:T.gray400,marginBottom:"20px"}}>Current balance: {cur.fmt(cur.balance)}</div>
-                <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:"6px"}}>Amount ({currency})</div>
-                <input type="number" value={fundAmt} onChange={e=>setFundAmt(e.target.value)} placeholder={currency==="NGN"?"e.g. 10000000":currency==="USDT"?"e.g. 5000":"e.g. 5000"}
-                  style={{width:"100%",border:`1px solid ${T.gray200}`,padding:"12px 14px",fontFamily:F,fontSize:"15px",fontWeight:700,color:T.black,outline:"none",marginBottom:"16px"}}/>
-                <div style={{background:T.gray50,padding:"10px 14px",fontSize:"11px",color:T.gray400,marginBottom:"20px"}}>
-                  {currency==="NGN"&&"Transfer to: Zenith Bank · 0112 3456 78 · Chukwuma Fuels Ltd"}
-                  {currency==="USD"&&"Wire to: JP Morgan · Routing 021000021 · Account 987654321"}
-                  {currency==="USDT"&&"Send USDT (TRC-20) to: TXdK...9mRp · Min: 10 USDT"}
+                <div style={{fontSize:"16px",fontWeight:800,color:T.black,marginBottom:"4px"}}>Fund NGN Wallet</div>
+                <div style={{fontSize:"11px",color:T.gray400,marginBottom:"18px"}}>Secure payment via Paystack · Instant credit</div>
+                {/* Quick presets */}
+                <div style={{display:"flex",flexWrap:"wrap",gap:"7px",marginBottom:"14px"}}>
+                  {FUND_PRESETS.map(p=>(
+                    <button key={p.label} onClick={()=>setFundAmt(String(p.naira))}
+                      style={{background:fundAmt===String(p.naira)?T.black:T.white,color:fundAmt===String(p.naira)?T.white:T.black,border:`1px solid ${fundAmt===String(p.naira)?T.black:T.gray200}`,padding:"6px 12px",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:F}}>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:"6px"}}>Custom Amount (NGN)</div>
+                <input type="number" value={fundAmt} onChange={e=>{setFundAmt(e.target.value);setFundErr("");}}
+                  placeholder="e.g. 5000000"
+                  style={{width:"100%",border:`1px solid ${T.gray200}`,padding:"12px 14px",fontFamily:F,fontSize:"15px",fontWeight:700,color:T.black,outline:"none",marginBottom:"10px",boxSizing:"border-box"}}/>
+                {fundErr&&<div style={{fontSize:"11px",color:T.red,fontWeight:600,marginBottom:"10px"}}>{fundErr}</div>}
+                <div style={{background:T.gray50,padding:"10px 14px",fontSize:"11px",color:T.gray400,marginBottom:"16px",lineHeight:1.5}}>
+                  You will be redirected to Paystack's secure checkout. Your card/bank details are never stored on Ventryl.
                 </div>
                 <div style={{display:"flex",gap:"8px"}}>
-                  <button onClick={()=>setFundDone(true)} disabled={!fundAmt} style={{flex:1,background:fundAmt?T.green:T.gray200,color:fundAmt?T.white:T.gray400,border:"none",padding:"11px",fontSize:"13px",fontWeight:800,cursor:fundAmt?"pointer":"not-allowed",fontFamily:F,minHeight:"44px"}}>Confirm</button>
-                  <button onClick={()=>setShowFund(false)} style={{flex:1,background:"none",color:T.black,border:`1px solid ${T.gray200}`,padding:"11px",fontSize:"13px",fontWeight:700,cursor:"pointer",fontFamily:F,minHeight:"44px"}}>Cancel</button>
+                  <button
+                    onClick={currency==="NGN"?handlePaystackFund:()=>setFundDone(true)}
+                    disabled={!fundAmt||fundLoading}
+                    style={{flex:1,background:fundAmt&&!fundLoading?T.green:T.gray200,color:fundAmt&&!fundLoading?T.white:T.gray400,border:"none",padding:"11px",fontSize:"13px",fontWeight:800,cursor:fundAmt&&!fundLoading?"pointer":"not-allowed",fontFamily:F,minHeight:"44px"}}>
+                    {fundLoading?"Opening Paystack…":currency==="NGN"?"Pay with Paystack →":"Confirm"}
+                  </button>
+                  <button onClick={()=>{setShowFund(false);setFundErr("");setFundAmt("");}} style={{flex:1,background:"none",color:T.black,border:`1px solid ${T.gray200}`,padding:"11px",fontSize:"13px",fontWeight:700,cursor:"pointer",fontFamily:F,minHeight:"44px"}}>Cancel</button>
                 </div>
               </>
             )}
@@ -1395,9 +1449,36 @@ function DepotDash({isMobile}) {
   );
 }
 
-function DepotInbox({isMobile,onViewOrder}) {
+function DepotInbox({depotId,isMobile,onViewOrder}) {
   // Merge buyer-placed orders (newest first) with static INCOMING
-  const ALL_INCOMING=[..._placedOrdersStore.slice().reverse(),...INCOMING];
+  const [liveOrders,setLiveOrders]=useState([]);
+  const {depotOrders,loadDepotOrders}=useVentrylStore();
+  useEffect(()=>{if(depotId)loadDepotOrders(depotId);},[depotId]);
+  const dbOrders=depotOrders[depotId]||[];
+  const ALL_INCOMING=[...liveOrders,..._placedOrdersStore.slice().reverse(),...dbOrders.filter(o=>!liveOrders.find(l=>l.id===o.id)&&!_placedOrdersStore.find(p=>p.id===o.id))];
+
+  // Realtime: new orders for this depot
+  useDepotInboxRealtime(depotId,(payload)=>{
+    if(payload.eventType==="INSERT"&&payload.new){
+      const o=payload.new;
+      // Normalize to local shape
+      setLiveOrders(prev=>[{
+        id:o.id,
+        buyer:o.buyer_name||"New Buyer",
+        product:o.product||"PMS",
+        vol:o.vol_litres||0,
+        value:o.total_value||0,
+        trucks:o.truck_count||1,
+        status:o.status||"pending",
+        location:o.delivery_address||"Lagos",
+        type:o.delivery_type||"delivery",
+        submitted:"Just now",
+        slaLeft:"3h 00m",
+        depot:"",
+      },...prev]);
+    }
+  });
+
   const [acted,setActed]=useState(()=>{
     const a={};
     ALL_INCOMING.forEach(o=>{
@@ -2061,8 +2142,15 @@ function Toggle({on,onChange}) {
   );
 }
 
-function FieldRow({label,value,editable=true,verified=false,type="text",hint}) {
-  const [val,setVal]=useState(value);
+function FieldRow({label,value,onChange,editable=true,verified=false,type="text",hint}) {
+  // Controlled if onChange provided, otherwise uncontrolled with internal state
+  const [localVal,setLocalVal]=useState(value||"");
+  const isControlled=typeof onChange==="function";
+  const displayVal=isControlled?value:localVal;
+  const handleChange=e=>{
+    if(isControlled) onChange(e);
+    else setLocalVal(e.target.value);
+  };
   return (
     <div style={{marginBottom:"16px"}}>
       <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"6px"}}>
@@ -2070,12 +2158,12 @@ function FieldRow({label,value,editable=true,verified=false,type="text",hint}) {
         {verified&&<span style={{background:T.greenLight,color:T.greenDark,fontSize:"9px",fontWeight:800,padding:"1px 5px"}}>VERIFIED</span>}
       </div>
       {editable?(
-        <input type={type} value={val} onChange={e=>setVal(e.target.value)}
+        <input type={type} value={displayVal} onChange={handleChange}
           style={{width:"100%",border:`1px solid ${T.gray200}`,padding:"10px 14px",fontFamily:F,fontSize:"13px",fontWeight:600,color:T.black,background:T.white,outline:"none"}}
           onFocus={e=>e.target.style.borderColor=T.black}
           onBlur={e=>e.target.style.borderColor=T.gray200}/>
       ):(
-        <div style={{border:`1px solid ${T.gray100}`,padding:"10px 14px",fontSize:"13px",fontWeight:700,color:T.gray600,background:T.gray50}}>{val}</div>
+        <div style={{border:`1px solid ${T.gray100}`,padding:"10px 14px",fontSize:"13px",fontWeight:700,color:T.gray600,background:T.gray50}}>{displayVal||"—"}</div>
       )}
       {hint&&<div style={{fontSize:"10px",color:T.gray400,marginTop:"4px",fontWeight:600}}>{hint}</div>}
     </div>
@@ -2115,10 +2203,139 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
   ]);
 
 
+  const {user:authUser,profile:authProfile,setProfile}=useAuthStore();
   const isBuyer=portalType==="buyer";
+
+  // Profile form state — seeded from real DB profile
+  const [profileForm,setProfileForm]=useState({
+    fullName:"",companyName:"",phone:"",state:"",lga:"",cacNumber:"",
+    contactPerson:"",jobTitle:"",email:"",address:"",
+  });
+  const [profileSaving,setProfileSaving]=useState(false);
+  const [profileLoaded,setProfileLoaded]=useState(false);
+  useEffect(()=>{
+    if(!authProfile||profileLoaded) return;
+    setProfileForm({
+      fullName:authProfile.full_name||"",
+      companyName:authProfile.company_name||"",
+      phone:authProfile.phone||"",
+      state:authProfile.state||"",
+      lga:authProfile.lga||"",
+      cacNumber:authProfile.cac_number||"",
+      contactPerson:authProfile.full_name||"",
+      jobTitle:authProfile.job_title||"",
+      email:authUser?.email||"",
+      address:authProfile.address||"",
+    });
+    setProfileLoaded(true);
+  },[authProfile,profileLoaded]);
+
+  const handleSaveProfile=async()=>{
+    if(!authUser) return;
+    setProfileSaving(true);
+    try{
+      const updated=await profilesApi.update(authUser.id,{
+        full_name:profileForm.fullName,
+        company_name:profileForm.companyName,
+        phone:profileForm.phone,
+        state:profileForm.state,
+        lga:profileForm.lga,
+        cac_number:profileForm.cacNumber,
+      });
+      setProfile({...authProfile,...updated});
+      setSaved(true);
+      setTimeout(()=>setSaved(false),2200);
+    }catch(e){
+      console.error("Failed to save profile",e);
+    }finally{
+      setProfileSaving(false);
+    }
+  };
+  const pf=(k)=>profileForm[k];
+  const sp=(k)=>e=>setProfileForm(f=>({...f,[k]:e.target.value}));
+
+  // Notification prefs: seed from DB profile, fall back to defaults
+  const [notifLoaded,setNotifLoaded]=useState(false);
+  const [notifSaving,setNotifSaving]=useState(false);
+  useEffect(()=>{
+    if(!authUser||notifLoaded) return;
+    notifApi.getPrefs(authUser.id).then(prefs=>{
+      if(prefs) setNotif(p=>({...p,...prefs}));
+      setNotifLoaded(true);
+    }).catch(()=>setNotifLoaded(true));
+  },[authUser,notifLoaded]);
+
+  const handleSaveNotifPrefs=async()=>{
+    if(!authUser) return handleSave();
+    setNotifSaving(true);
+    try{
+      await notifApi.savePrefs(authUser.id,notif);
+      setProfile({...authProfile,notif_prefs:notif});
+      setSaved(true);
+      setTimeout(()=>setSaved(false),2200);
+    }catch(e){
+      console.error("Failed to save notif prefs",e);
+    }finally{
+      setNotifSaving(false);
+    }
+  };
+
+  // Settings realtime: auto-update profile when kyc_status or notif_prefs change remotely
+  useProfileRealtime(authUser?.id,(payload)=>{
+    if(payload?.new) setProfile(p=>({...p,...payload.new}));
+  });
+
+  // KYC state (buyer settings)
+  const [kycFiles,setKycFiles]=useState({});
+  const [kycUploaded,setKycUploaded]=useState({});
+  const [kycUploading,setKycUploading]=useState({});
+  const [kycUploadErr,setKycUploadErr]=useState({});
+  const [kycSubmitting,setKycSubmitting]=useState(false);
+  const [kycSubmitted,setKycSubmitted]=useState(authProfile?.kyc_status==="submitted"||authProfile?.kyc_status==="verified");
+  const [kycSubmitErr,setKycSubmitErr]=useState("");
+
+  const KYC_DOCS=[
+    {key:"nin",            label:"NIN / National ID",          required:true,  hint:"National Identity Number slip or NIN card"},
+    {key:"cac_cert",       label:"CAC Certificate",            required:true,  hint:"Certificate of Incorporation — required for company accounts"},
+    {key:"proof_of_address",label:"Proof of Address",          required:true,  hint:"Utility bill or bank statement — not older than 3 months"},
+  ];
+  const kycReqDocs=KYC_DOCS.filter(d=>d.required);
+  const kycDoneCount=kycReqDocs.filter(d=>kycUploaded[d.key]).length;
+  const kycAllDone=kycDoneCount===kycReqDocs.length;
+
+  const handleKycUpload=async(doc,file)=>{
+    if(!file||!authUser) return;
+    setKycUploading(u=>({...u,[doc.key]:true}));
+    setKycUploadErr(e=>({...e,[doc.key]:""}));
+    try{
+      await kycApi.uploadDocument(authUser.id,doc.key,file);
+      setKycUploaded(u=>({...u,[doc.key]:file.name}));
+      setKycFiles(f=>({...f,[doc.key]:file}));
+    }catch(e){
+      setKycUploadErr(err=>({...err,[doc.key]:e.message||"Upload failed"}));
+    }finally{
+      setKycUploading(u=>({...u,[doc.key]:false}));
+    }
+  };
+
+  const handleKycSubmit=async()=>{
+    if(!kycAllDone||!authUser) return;
+    setKycSubmitting(true);
+    setKycSubmitErr("");
+    try{
+      await kycApi.submit(authUser.id);
+      setKycSubmitted(true);
+      setProfile({...authProfile,kyc_status:"submitted"});
+    }catch(e){
+      setKycSubmitErr(e.message||"Submission failed. Try again.");
+    }finally{
+      setKycSubmitting(false);
+    }
+  };
 
   const TABS=isBuyer?[
     {id:"profile",label:"Company Profile",icon:"M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"},
+    {id:"verification",label:"Verification",icon:"M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z",alert:authProfile&&authProfile.kyc_status==="pending"},
     {id:"notifications",label:"Notifications",icon:"M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"},
     {id:"wallet",label:"Wallet & Payment",icon:"M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"},
     {id:"security",label:"Security",icon:"M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"},
@@ -2145,32 +2362,20 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
           <>
             <SettingsBlock title="Company Information">
               <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:"0 20px"}}>
-                <FieldRow label="Company Name" value="Chukwuma Fuels Ltd" verified editable={false}/>
-                <FieldRow label="RC Number" value="RC-1092843" verified editable={false}/>
-                <FieldRow label="Business Type" value="Petrol Station" editable={false}/>
-                <FieldRow label="State" value="Lagos State" editable={false}/>
+                <FieldRow label="Company Name" value={pf("companyName")} onChange={sp("companyName")} verified={authProfile?.kyc_status==="verified"} editable={authProfile?.kyc_status!=="verified"}/>
+                <FieldRow label="RC / CAC Number" value={pf("cacNumber")} onChange={sp("cacNumber")} verified={authProfile?.kyc_status==="verified"} editable={authProfile?.kyc_status!=="verified"}/>
+                <FieldRow label="State" value={pf("state")} onChange={sp("state")}/>
+                <FieldRow label="LGA" value={pf("lga")} onChange={sp("lga")}/>
               </div>
-              <div style={{fontSize:"10px",color:T.gray400,fontWeight:600,marginTop:"-8px",marginBottom:"4px"}}>Verified fields are locked. Contact support to update.</div>
+              {authProfile?.kyc_status==="verified"&&<div style={{fontSize:"10px",color:T.gray400,fontWeight:600,marginTop:"-8px",marginBottom:"4px"}}>Verified fields are locked. Contact support to update.</div>}
             </SettingsBlock>
             <SettingsBlock title="Contact Details">
               <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:"0 20px"}}>
-                <FieldRow label="Contact Person" value="Emeka Chukwuma"/>
-                <FieldRow label="Job Title" value="Managing Director"/>
-                <FieldRow label="Phone Number" value="+234 803 456 7890" type="tel"/>
-                <FieldRow label="Email Address" value="emeka@chukwumafuels.com" type="email"/>
+                <FieldRow label="Full Name" value={pf("fullName")} onChange={sp("fullName")}/>
+                <FieldRow label="Phone Number" value={pf("phone")} onChange={sp("phone")} type="tel"/>
+                <FieldRow label="Email Address" value={pf("email")} editable={false}/>
               </div>
-              <FieldRow label="Business Address" value="14 Apapa Road, Surulere, Lagos"/>
-            </SettingsBlock>
-            <SettingsBlock title="KYB Documents">
-              {[["CAC Registration","delivered"],["FIRS Tax ID","delivered"],["Director BVN","delivered"],["Utility Bill","pending"]].map(([doc,badge])=>(
-                <div key={doc} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 0",borderBottom:`1px solid ${T.gray100}`}}>
-                  <span style={{fontSize:"13px",fontWeight:600,color:T.black}}>{doc}</span>
-                  <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
-                    <Badge status={badge}/>
-                    {badge==="pending"&&<button style={{background:T.black,color:T.white,border:"none",padding:"5px 10px",fontSize:"10px",fontWeight:800,cursor:"pointer",fontFamily:F}}>Upload</button>}
-                  </div>
-                </div>
-              ))}
+              <FieldRow label="Business Address" value={pf("address")} onChange={sp("address")}/>
             </SettingsBlock>
           </>
         ):(
@@ -2185,11 +2390,11 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
               <div style={{fontSize:"10px",color:T.gray400,fontWeight:600,marginTop:"-8px",marginBottom:"4px"}}>Verified fields are locked. Contact your account manager to update.</div>
             </SettingsBlock>
             <SettingsBlock title="Location & Contact">
-              <FieldRow label="Address" value={depot?.location||"Apapa Tank Farm, Apapa, Lagos"}/>
+              <FieldRow label="Address" value={depot?.location||""}/>
               <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:"0 20px"}}>
-                <FieldRow label="Operations Contact" value="Adebayo Okafor"/>
-                <FieldRow label="Phone" value="+234 802 345 6789" type="tel"/>
-                <FieldRow label="Email" value="ops@nepal-energies.com" type="email"/>
+                <FieldRow label="Operations Contact" value={depot?._raw?.contact_name||""}/>
+                <FieldRow label="Phone" value={depot?._raw?.contact_phone||""} type="tel"/>
+                <FieldRow label="Email" value={depot?._raw?.contact_email||""} type="email"/>
               </div>
             </SettingsBlock>
             <SettingsBlock title="Active Products">
@@ -2207,7 +2412,13 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
             </SettingsBlock>
           </>
         )}
-        <SaveBtn/>
+        {isBuyer?(
+          <button onClick={handleSaveProfile} disabled={profileSaving} style={{background:saved?T.green:T.black,color:T.white,border:"none",padding:"12px 28px",fontSize:"13px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"44px",transition:"background 0.2s",marginTop:"6px",opacity:profileSaving?0.6:1}}>
+            {profileSaving?"Saving…":saved?"✓ Saved":"Save Changes"}
+          </button>
+        ):(
+          <SaveBtn/>
+        )}
       </div>
     ),
 
@@ -2225,10 +2436,13 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
         </SettingsBlock>
         <SettingsBlock title="Channels">
           <NotifRow label="Email" sub={isBuyer?"emeka@chukwumafuels.com":"ops@nepal-energies.com"} on={notif.emailCh} onChange={v=>setNotif(n=>({...n,emailCh:v}))}/>
-          <NotifRow label="SMS" sub={isBuyer?"+234 803 456 7890":"+234 802 345 6789"} on={notif.smsCh} onChange={v=>setNotif(n=>({...n,smsCh:v}))}/>
+          <NotifRow label="SMS" sub={authProfile?.phone||isBuyer?"+234 803 456 7890":"+234 802 345 6789"} on={notif.smsCh} onChange={v=>setNotif(n=>({...n,smsCh:v}))}/>
           <NotifRow label="Push notifications" sub="Browser and mobile push" on={notif.pushCh} onChange={v=>setNotif(n=>({...n,pushCh:v}))}/>
         </SettingsBlock>
-        <SaveBtn label="Save Preferences"/>
+        <button onClick={handleSaveNotifPrefs} disabled={notifSaving}
+          style={{background:saved?T.green:T.black,color:T.white,border:"none",padding:"12px 28px",fontSize:"13px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"44px",transition:"background 0.2s",marginTop:"6px",opacity:notifSaving?0.6:1}}>
+          {notifSaving?"Saving…":saved?"✓ Saved":"Save Preferences"}
+        </button>
       </div>
     ),
 
@@ -2482,6 +2696,113 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
         </SettingsBlock>
       </div>
     ),
+    verification:(()=>{
+      const status=authProfile?.kyc_status;
+      if(status==="verified") return (
+        <div>
+          <div style={{background:T.greenLight,border:`1px solid ${T.green}`,padding:"18px 20px",display:"flex",alignItems:"center",gap:"14px",marginBottom:"24px"}}>
+            <svg width={28} height={28} viewBox="0 0 24 24" fill="none" stroke={T.green} strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            <div>
+              <div style={{fontSize:"14px",fontWeight:800,color:T.greenDark}}>Identity Verified</div>
+              <div style={{fontSize:"12px",color:T.greenDark,marginTop:"2px",opacity:0.8}}>Your account is fully verified. You can now create and manage depots.</div>
+            </div>
+          </div>
+          <SettingsBlock title="Submitted Documents">
+            {KYC_DOCS.map(doc=>(
+              <div key={doc.key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0",borderBottom:`1px solid ${T.gray100}`}}>
+                <div>
+                  <div style={{fontSize:"13px",fontWeight:700,color:T.black}}>{doc.label}</div>
+                  <div style={{fontSize:"11px",color:T.gray400,marginTop:"2px"}}>{doc.hint}</div>
+                </div>
+                <Badge status="delivered"/>
+              </div>
+            ))}
+          </SettingsBlock>
+        </div>
+      );
+      if(status==="submitted") return (
+        <div>
+          <div style={{background:"#fffbeb",border:"1px solid #f59e0b",padding:"18px 20px",display:"flex",alignItems:"center",gap:"14px",marginBottom:"24px"}}>
+            <svg width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <div>
+              <div style={{fontSize:"14px",fontWeight:800,color:"#92400e"}}>Under Review</div>
+              <div style={{fontSize:"12px",color:"#92400e",marginTop:"2px",opacity:0.8}}>Your documents are being reviewed. This typically takes 1–3 business days.</div>
+            </div>
+          </div>
+          <SettingsBlock title="Submitted Documents">
+            {KYC_DOCS.map(doc=>(
+              <div key={doc.key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0",borderBottom:`1px solid ${T.gray100}`}}>
+                <div>
+                  <div style={{fontSize:"13px",fontWeight:700,color:T.black}}>{doc.label}</div>
+                  <div style={{fontSize:"11px",color:T.gray400,marginTop:"2px"}}>{doc.hint}</div>
+                </div>
+                <Badge status="pending"/>
+              </div>
+            ))}
+          </SettingsBlock>
+        </div>
+      );
+      return (
+        <div>
+          <div style={{background:T.gray50,border:`1px solid ${T.gray100}`,padding:"16px 18px",marginBottom:"22px"}}>
+            <div style={{fontSize:"13px",fontWeight:800,color:T.black,marginBottom:"6px"}}>Identity Verification (KYC)</div>
+            <div style={{fontSize:"12px",color:T.gray400,lineHeight:1.6}}>
+              Upload the required documents to verify your identity. All documents are encrypted and stored securely.
+              Verification is required before you can create or manage depots.
+            </div>
+            <div style={{marginTop:"12px",display:"flex",alignItems:"center",gap:"10px"}}>
+              <div style={{flex:1,height:"4px",background:T.gray100,borderRadius:"2px",overflow:"hidden"}}>
+                <div style={{width:`${(kycDoneCount/kycReqDocs.length)*100}%`,height:"100%",background:kycAllDone?T.green:T.black,transition:"width 0.4s"}}/>
+              </div>
+              <div style={{fontSize:"11px",fontWeight:700,color:T.gray400,flexShrink:0}}>{kycDoneCount}/{kycReqDocs.length} uploaded</div>
+            </div>
+          </div>
+          <SettingsBlock title="Required Documents">
+            {KYC_DOCS.map(doc=>{
+              const uploaded=kycUploaded[doc.key];
+              const uploading=kycUploading[doc.key];
+              const err=kycUploadErr[doc.key];
+              return(
+                <div key={doc.key} style={{padding:"14px 0",borderBottom:`1px solid ${T.gray100}`}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"12px",flexWrap:"wrap"}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:"7px",flexWrap:"wrap"}}>
+                        <span style={{fontSize:"13px",fontWeight:700,color:T.black}}>{doc.label}</span>
+                        {doc.required&&<span style={{fontSize:"9px",fontWeight:800,color:T.red,background:"#fff1f2",padding:"2px 6px"}}>REQUIRED</span>}
+                        {uploaded&&<span style={{fontSize:"9px",fontWeight:800,color:T.green,background:T.greenLight,padding:"2px 6px"}}>✓ UPLOADED</span>}
+                      </div>
+                      <div style={{fontSize:"11px",color:T.gray400,marginTop:"3px"}}>{doc.hint}</div>
+                      {uploaded&&<div style={{fontSize:"11px",color:T.gray400,marginTop:"3px",fontStyle:"italic"}}>{uploaded}</div>}
+                      {err&&<div style={{fontSize:"11px",color:T.red,marginTop:"4px",fontWeight:600}}>{err}</div>}
+                    </div>
+                    <label style={{flexShrink:0,cursor:uploading?"not-allowed":"pointer"}}>
+                      <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" style={{display:"none"}}
+                        disabled={uploading}
+                        onChange={e=>{const f=e.target.files?.[0];if(f)handleKycUpload(doc,f);e.target.value="";}}
+                      />
+                      <div style={{background:uploaded?T.white:T.black,color:uploaded?T.black:T.white,border:`1px solid ${uploaded?T.gray200:T.black}`,padding:"8px 14px",fontSize:"11px",fontWeight:800,fontFamily:F,minWidth:"90px",textAlign:"center",opacity:uploading?0.6:1,minHeight:"36px",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        {uploading?"Uploading…":uploaded?"Re-upload":"Upload"}
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              );
+            })}
+          </SettingsBlock>
+          {kycSubmitErr&&<div style={{color:T.red,fontSize:"12px",fontWeight:600,marginBottom:"10px"}}>{kycSubmitErr}</div>}
+          <div style={{display:"flex",justifyContent:"flex-end",marginTop:"20px"}}>
+            <button
+              disabled={!kycAllDone||kycSubmitting}
+              onClick={handleKycSubmit}
+              style={{background:kycAllDone?(kycSubmitting?"#6b7280":T.black):T.gray200,color:kycAllDone?T.white:T.gray400,border:"none",padding:"13px 28px",fontSize:"13px",fontWeight:800,cursor:kycAllDone&&!kycSubmitting?"pointer":"not-allowed",fontFamily:F,minHeight:"46px",transition:"background 0.2s"}}
+            >
+              {kycSubmitting?"Submitting…":"Submit for Verification →"}
+            </button>
+          </div>
+          <div style={{fontSize:"11px",color:T.gray400,marginTop:"10px",textAlign:"right"}}>PDF, JPEG, PNG or WebP · max 10 MB per file</div>
+        </div>
+      );
+    })(),
   };
 
   const activeTab=TABS.find(t=>t.id===tab);
@@ -2493,6 +2814,7 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
     products:"Add, remove, and configure products available at this depot",
     team:"Manage team members and their access levels",
     security:"Password, 2FA, sessions, and API credentials",
+    verification:"Upload KYC documents to verify your identity",
   };
 
   return (
@@ -2522,56 +2844,148 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
 /* ════════════════════════════════════════════
    CREATE DEPOT FLOW
 ════════════════════════════════════════════ */
-function CreateDepotFlow({onSubmit,onCancel,isMobile}) {
-  const [step,setStep]=useState(1);
-  const [form,setForm]=useState({name:"",location:"",address:"",license:"",expiry:"",products:[],capacity:""});
-  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
-  const toggleProduct=p=>set("products",form.products.includes(p)?form.products.filter(x=>x!==p):[...form.products,p]);
-  const canStep1=form.name.trim()&&form.location.trim();
-  const canStep2=form.license.trim()&&form.expiry&&form.products.length>0;
-  const LABELS=["Details","License","Review"];
-  const Inp=({label,k,type="text",hint,placeholder})=>(
+// Defined at module level so its identity is stable across renders (avoids focus-loss bug)
+function DepotFormInput({label,value,onChange,type="text",hint,placeholder}) {
+  return (
     <div style={{marginBottom:"16px"}}>
       <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"6px"}}>{label}</div>
-      <input type={type} value={form[k]} onChange={e=>set(k,e.target.value)} placeholder={placeholder}
+      <input type={type} value={value} onChange={onChange} placeholder={placeholder}
         style={{width:"100%",border:`1px solid ${T.gray200}`,padding:"10px 14px",fontFamily:F,fontSize:"13px",fontWeight:600,color:T.black,background:T.white,outline:"none"}}
         onFocus={e=>e.target.style.borderColor=T.black} onBlur={e=>e.target.style.borderColor=T.gray200}/>
       {hint&&<div style={{fontSize:"10px",color:T.gray400,marginTop:"4px",fontWeight:600}}>{hint}</div>}
     </div>
   );
+}
+
+const KYB_DOCS=[
+  {key:"nmdpra_license",  label:"NMDPRA License Certificate",        required:true,  hint:"Current, unexpired license from the Dept. of Petroleum Resources"},
+  {key:"cac_cert",        label:"CAC Registration (Form C02/C07)",   required:true,  hint:"Certificate of Incorporation from the Corporate Affairs Commission"},
+  {key:"tax_clearance",   label:"FIRS Tax Clearance Certificate",    required:true,  hint:"Tax clearance for the last 3 fiscal years"},
+  {key:"env_permit",      label:"DPR Environmental Permit",          required:true,  hint:"Valid environmental permit for the depot facility"},
+  {key:"proof_of_address",label:"Utility Bill (Depot Address)",      required:false, hint:"Recent bill confirming the depot's physical address"},
+];
+
+function CreateDepotFlow({onCreateDepot,onDone,onCancel,isMobile}) {
+  const {user}=useAuthStore();
+  const [step,setStep]=useState(1);
+  const [form,setForm]=useState({name:"",location:"",state:"",lga:"",address:"",license:"",expiry:"",products:[],capacity:"",contactName:"",contactPhone:"",contactEmail:"",contactRole:""});
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const toggleProduct=p=>set("products",form.products.includes(p)?form.products.filter(x=>x!==p):[...form.products,p]);
+
+  // Created depot (set after step 3 → 4 transition)
+  const [createdDepot,setCreatedDepot]=useState(null);
+  const [creating,setCreating]=useState(false);
+  const [createErr,setCreateErr]=useState("");
+
+  // KYB doc upload state
+  const [uploaded,setUploaded]=useState({});   // { key: filename }
+  const [uploading,setUploading]=useState({});
+  const [uploadErr,setUploadErr]=useState({});
+
+  // KYB submit state
+  const [submitting,setSubmitting]=useState(false);
+  const [submitErr,setSubmitErr]=useState("");
+  const [submitted,setSubmitted]=useState(false);
+
+  const canStep1=form.name.trim()&&form.location.trim()&&form.state.trim();
+  const canStep2=form.license.trim()&&form.expiry&&form.products.length>0;
+  const canStep3=form.contactName.trim()&&form.contactPhone.trim();
+  const reqDocs=KYB_DOCS.filter(d=>d.required);
+  const allRequiredUploaded=reqDocs.every(d=>uploaded[d.key]);
+
+  const LABELS=["Details","License","Contact","Documents","Submit"];
+
+  const goToKYB=async()=>{
+    if(!canStep3) return;
+    setCreating(true);
+    setCreateErr("");
+    try{
+      // ── Diagnostic: verify session before attempting insert ──
+      const {data:{session},error:sessErr}=await supabase.auth.getSession();
+      console.log('[CreateDepot] session:', session?.user?.id, 'sessErr:', sessErr);
+      if(!session) throw new Error('Session expired — please sign out and sign back in.');
+      // ── End diagnostic ──
+      const depot=await onCreateDepot(form);
+      setCreatedDepot(depot);
+      setStep(4);
+    }catch(e){
+      console.error('[CreateDepotFlow] create failed:', e.name, e.message, e);
+      setCreateErr(e.message||"Failed to create depot. Please try again.");
+    }finally{
+      setCreating(false);
+    }
+  };
+
+  const handleUpload=async(doc,file)=>{
+    if(!file||!user||!createdDepot) return;
+    setUploading(u=>({...u,[doc.key]:true}));
+    setUploadErr(e=>({...e,[doc.key]:""}));
+    try{
+      await kybApi.uploadDocument(createdDepot.id,user.id,doc.key,file);
+      setUploaded(u=>({...u,[doc.key]:file.name}));
+    }catch(e){
+      setUploadErr(err=>({...err,[doc.key]:e.message||"Upload failed"}));
+    }finally{
+      setUploading(u=>({...u,[doc.key]:false}));
+    }
+  };
+
+  const handleSubmitKYB=async()=>{
+    if(!createdDepot) return;
+    setSubmitting(true);
+    setSubmitErr("");
+    try{
+      await kybApi.submit(createdDepot.id);
+      setSubmitted(true);
+    }catch(e){
+      setSubmitErr(e.message||"Submission failed. Try again.");
+    }finally{
+      setSubmitting(false);
+    }
+  };
+
+  const btnBase={border:"none",fontFamily:F,cursor:"pointer",width:"100%",minHeight:"48px",fontSize:"13px",fontWeight:800,padding:"13px"};
+
   return (
     <div style={{maxWidth:"560px",margin:"0 auto",padding:isMobile?"0":"0 8px"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"24px"}}>
         <div style={{fontSize:"18px",fontWeight:800,color:T.black}}>Create New Depot</div>
         <button onClick={onCancel} style={{background:"none",border:"none",color:T.gray400,cursor:"pointer",fontFamily:F,fontSize:"12px",fontWeight:700,padding:0}}>Cancel ✕</button>
       </div>
+
+      {/* Step indicator */}
       <div style={{display:"flex",alignItems:"center",marginBottom:"28px"}}>
         {LABELS.map((s,i,arr)=>(
           <div key={s} style={{display:"flex",alignItems:"center",flex:i<arr.length-1?"1":"0"}}>
             <div style={{display:"flex",alignItems:"center",gap:"6px",whiteSpace:"nowrap"}}>
               <div style={{width:"24px",height:"24px",borderRadius:"50%",background:step>i+1?T.green:step===i+1?T.black:T.gray200,color:step>=i+1?T.white:T.gray400,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"10px",fontWeight:800,flexShrink:0,transition:"all 0.2s"}}>{step>i+1?"✓":i+1}</div>
-              {!isMobile&&<span style={{fontSize:"12px",fontWeight:700,color:step===i+1?T.black:T.gray400}}>{s}</span>}
+              {!isMobile&&<span style={{fontSize:"11px",fontWeight:700,color:step===i+1?T.black:T.gray400}}>{s}</span>}
             </div>
             {i<arr.length-1&&<div style={{flex:1,height:"2px",background:step>i+1?T.green:T.gray200,margin:"0 8px",transition:"background 0.2s"}}/>}
           </div>
         ))}
       </div>
+
+      {/* Step 1: Depot Details */}
       {step===1&&(
         <div>
           <div style={{fontSize:"14px",fontWeight:800,color:T.black,marginBottom:"18px"}}>Depot Details</div>
-          <Inp label="Depot Name" k="name" placeholder="e.g. Nepal Energies" hint="Official registered name of your depot"/>
-          <Inp label="City / Location" k="location" placeholder="e.g. Apapa, Lagos"/>
-          <Inp label="Full Address" k="address" placeholder="e.g. Tank Farm Road, Apapa, Lagos"/>
-          <button disabled={!canStep1} onClick={()=>setStep(2)} style={{background:canStep1?T.black:T.gray200,color:canStep1?T.white:T.gray400,border:"none",padding:"13px",fontSize:"13px",fontWeight:800,cursor:canStep1?"pointer":"not-allowed",fontFamily:F,width:"100%",minHeight:"48px"}}>Continue →</button>
+          <DepotFormInput label="Depot Name" value={form.name} onChange={e=>set("name",e.target.value)} placeholder="e.g. Nepal Energies" hint="Official registered name of your depot"/>
+          <DepotFormInput label="State *" value={form.state} onChange={e=>set("state",e.target.value)} placeholder="e.g. Lagos" hint="Nigerian state where the depot is located"/>
+          <DepotFormInput label="City / LGA" value={form.location} onChange={e=>set("location",e.target.value)} placeholder="e.g. Apapa"/>
+          <DepotFormInput label="Full Address" value={form.address} onChange={e=>set("address",e.target.value)} placeholder="e.g. Tank Farm Road, Apapa, Lagos"/>
+          <button disabled={!canStep1} onClick={()=>setStep(2)} style={{...btnBase,background:canStep1?T.black:T.gray200,color:canStep1?T.white:T.gray400,cursor:canStep1?"pointer":"not-allowed"}}>Continue →</button>
         </div>
       )}
+
+      {/* Step 2: License & Products */}
       {step===2&&(
         <div>
           <button onClick={()=>setStep(1)} style={{background:"none",border:"none",color:T.gray400,cursor:"pointer",fontFamily:F,fontSize:"12px",fontWeight:700,marginBottom:"14px",padding:0}}>← Back</button>
           <div style={{fontSize:"14px",fontWeight:800,color:T.black,marginBottom:"18px"}}>License & Products</div>
-          <Inp label="NMDPRA License No." k="license" placeholder="e.g. DL-2024-APR-0099" hint="Department of Petroleum Resources license number"/>
-          <Inp label="License Expiry Date" k="expiry" type="date"/>
-          <Inp label="Tank Capacity (Litres)" k="capacity" type="number" placeholder="e.g. 85000"/>
+          <DepotFormInput label="NMDPRA License No." value={form.license} onChange={e=>set("license",e.target.value)} placeholder="e.g. DL-2024-APR-0099" hint="Department of Petroleum Resources license number"/>
+          <DepotFormInput label="License Expiry Date" value={form.expiry} onChange={e=>set("expiry",e.target.value)} type="date"/>
+          <DepotFormInput label="Tank Capacity (Litres)" value={form.capacity} onChange={e=>set("capacity",e.target.value)} type="number" placeholder="e.g. 85000"/>
           <div style={{marginBottom:"16px"}}>
             <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"8px"}}>Products Handled</div>
             <div style={{display:"flex",gap:"8px",flexWrap:"wrap"}}>
@@ -2580,24 +2994,133 @@ function CreateDepotFlow({onSubmit,onCancel,isMobile}) {
               );})}
             </div>
           </div>
-          <button disabled={!canStep2} onClick={()=>setStep(3)} style={{background:canStep2?T.green:T.gray200,color:canStep2?T.white:T.gray400,border:"none",padding:"13px",fontSize:"13px",fontWeight:800,cursor:canStep2?"pointer":"not-allowed",fontFamily:F,width:"100%",minHeight:"48px"}}>Review Depot →</button>
+          <button disabled={!canStep2} onClick={()=>setStep(3)} style={{...btnBase,background:canStep2?T.black:T.gray200,color:canStep2?T.white:T.gray400,cursor:canStep2?"pointer":"not-allowed"}}>Continue →</button>
         </div>
       )}
+
+      {/* Step 3: Operations Contact */}
       {step===3&&(
         <div>
           <button onClick={()=>setStep(2)} style={{background:"none",border:"none",color:T.gray400,cursor:"pointer",fontFamily:F,fontSize:"12px",fontWeight:700,marginBottom:"14px",padding:0}}>← Back</button>
-          <div style={{fontSize:"14px",fontWeight:800,color:T.black,marginBottom:"16px"}}>Review & Submit</div>
-          <div style={{border:`1px solid ${T.gray100}`,marginBottom:"12px"}}>
-            {[["Depot Name",form.name],["Location",form.location],["Address",form.address||"—"],["NMDPRA License",form.license],["License Expiry",form.expiry||"—"],["Capacity",form.capacity?`${Number(form.capacity).toLocaleString()} L`:"—"],["Products",form.products.join(", ")||"—"]].map(([k,v])=>(
-              <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"11px 16px",borderBottom:`1px solid ${T.gray100}`,fontSize:"13px"}}>
-                <span style={{color:T.gray400,fontWeight:600}}>{k}</span><span style={{color:T.black,fontWeight:700}}>{v}</span>
+          <div style={{fontSize:"14px",fontWeight:800,color:T.black,marginBottom:"4px"}}>Operations Contact</div>
+          <div style={{fontSize:"12px",color:T.gray400,marginBottom:"20px"}}>Person responsible for day-to-day depot operations.</div>
+          <DepotFormInput label="Full Name *" value={form.contactName} onChange={e=>set("contactName",e.target.value)} placeholder="e.g. Aminu Bello"/>
+          <DepotFormInput label="Phone Number *" value={form.contactPhone} onChange={e=>set("contactPhone",e.target.value)} placeholder="e.g. +234 803 000 0000" hint="Must be reachable during loading operations"/>
+          <DepotFormInput label="Email Address" value={form.contactEmail} onChange={e=>set("contactEmail",e.target.value)} placeholder="e.g. ops@nepalenergies.ng" type="email"/>
+          <DepotFormInput label="Role / Designation" value={form.contactRole} onChange={e=>set("contactRole",e.target.value)} placeholder="e.g. Operations Manager"/>
+          {createErr&&<div style={{color:"#c0392b",fontSize:"12px",fontWeight:600,marginBottom:"12px",padding:"10px 14px",background:"#fef2f2",border:"1px solid #fca5a5"}}>{createErr}</div>}
+          <button disabled={!canStep3||creating} onClick={goToKYB} style={{...btnBase,background:canStep3&&!creating?T.black:T.gray200,color:canStep3&&!creating?T.white:T.gray400,cursor:canStep3&&!creating?"pointer":"not-allowed"}}>
+            {creating?"Creating depot…":"Continue →"}
+          </button>
+        </div>
+      )}
+
+      {/* Step 4: KYB Documents */}
+      {step===4&&(
+        <div>
+          <div style={{fontSize:"14px",fontWeight:800,color:T.black,marginBottom:"4px"}}>KYB Documents</div>
+          <div style={{fontSize:"12px",color:T.gray400,marginBottom:"16px"}}>Upload required documents to verify your depot. Required docs are marked with *.</div>
+          <div style={{background:T.amberLight,border:`1px solid ${T.amber}`,padding:"11px 14px",marginBottom:"18px",fontSize:"11px",color:"#8A5C00",fontWeight:600}}>
+            Depot created. Upload documents now or skip and submit them later from the KYB tab.
+          </div>
+          {KYB_DOCS.map(doc=>{
+            const isUploaded=!!uploaded[doc.key];
+            const isUploading=!!uploading[doc.key];
+            const err=uploadErr[doc.key];
+            return(
+              <div key={doc.key} style={{border:`1px solid ${isUploaded?T.green:T.gray200}`,padding:"14px 16px",marginBottom:"10px",background:isUploaded?T.greenLight:T.white}}>
+                <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:"12px"}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:"12px",fontWeight:800,color:T.black,marginBottom:"2px"}}>{doc.label}{doc.required&&<span style={{color:"#c0392b"}}> *</span>}</div>
+                    <div style={{fontSize:"11px",color:T.gray400,marginBottom:"6px"}}>{doc.hint}</div>
+                    {isUploaded&&<div style={{fontSize:"11px",color:T.green,fontWeight:700}}>✓ {uploaded[doc.key]}</div>}
+                    {err&&<div style={{fontSize:"11px",color:"#c0392b",fontWeight:600}}>{err}</div>}
+                  </div>
+                  <label style={{flexShrink:0,cursor:isUploading?"not-allowed":"pointer"}}>
+                    <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{display:"none"}} disabled={isUploading} onChange={e=>{const f=e.target.files?.[0];if(f)handleUpload(doc,f);e.target.value="";}}/>
+                    <div style={{padding:"7px 14px",border:`1px solid ${isUploaded?T.green:T.gray200}`,background:isUploaded?T.green:T.white,color:isUploaded?T.white:T.black,fontSize:"11px",fontWeight:800,whiteSpace:"nowrap"}}>
+                      {isUploading?"Uploading…":isUploaded?"Replace":"Upload"}
+                    </div>
+                  </label>
+                </div>
               </div>
-            ))}
+            );
+          })}
+          <div style={{display:"flex",gap:"10px",marginTop:"8px"}}>
+            <button onClick={()=>setStep(5)} style={{...btnBase,background:T.gray100,color:T.gray400,flex:"0 0 auto",width:"auto",padding:"13px 20px"}}>Skip for now</button>
+            <button disabled={!allRequiredUploaded} onClick={()=>setStep(5)} style={{...btnBase,flex:1,background:allRequiredUploaded?T.green:T.gray200,color:allRequiredUploaded?T.white:T.gray400,cursor:allRequiredUploaded?"pointer":"not-allowed"}}>
+              Review & Submit →
+            </button>
           </div>
-          <div style={{background:T.amberLight,padding:"12px 16px",marginBottom:"14px",fontSize:"11px",color:"#8A5C00",fontWeight:600,lineHeight:1.5}}>
-            Your depot will be created immediately. KYB documents must be submitted before you can receive orders.
-          </div>
-          <button onClick={()=>onSubmit(form)} style={{background:T.black,color:T.white,border:"none",padding:"14px",fontSize:"13px",fontWeight:800,cursor:"pointer",fontFamily:F,width:"100%",minHeight:"48px"}}>Create Depot →</button>
+        </div>
+      )}
+
+      {/* Step 5: Review & Submit */}
+      {step===5&&(
+        <div>
+          {!submitted?(
+            <>
+              <button onClick={()=>setStep(4)} style={{background:"none",border:"none",color:T.gray400,cursor:"pointer",fontFamily:F,fontSize:"12px",fontWeight:700,marginBottom:"14px",padding:0}}>← Back</button>
+              <div style={{fontSize:"14px",fontWeight:800,color:T.black,marginBottom:"16px"}}>Review & Submit</div>
+              <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"8px"}}>Depot Info</div>
+              <div style={{border:`1px solid ${T.gray100}`,marginBottom:"14px"}}>
+                {[["Depot Name",form.name],["Location",form.location],["Address",form.address||"—"],["NMDPRA License",form.license],["License Expiry",form.expiry||"—"],["Capacity",form.capacity?`${Number(form.capacity).toLocaleString()} L`:"—"],["Products",form.products.join(", ")||"—"]].map(([k,v])=>(
+                  <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"10px 16px",borderBottom:`1px solid ${T.gray100}`,fontSize:"12px"}}>
+                    <span style={{color:T.gray400,fontWeight:600}}>{k}</span><span style={{color:T.black,fontWeight:700}}>{v}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"8px"}}>Operations Contact</div>
+              <div style={{border:`1px solid ${T.gray100}`,marginBottom:"14px"}}>
+                {[["Name",form.contactName],["Phone",form.contactPhone],["Email",form.contactEmail||"—"],["Role",form.contactRole||"—"]].map(([k,v])=>(
+                  <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"10px 16px",borderBottom:`1px solid ${T.gray100}`,fontSize:"12px"}}>
+                    <span style={{color:T.gray400,fontWeight:600}}>{k}</span><span style={{color:T.black,fontWeight:700}}>{v}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"8px"}}>Documents</div>
+              <div style={{border:`1px solid ${T.gray100}`,marginBottom:"16px"}}>
+                {KYB_DOCS.map(doc=>{
+                  const done=!!uploaded[doc.key];
+                  return(
+                    <div key={doc.key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 16px",borderBottom:`1px solid ${T.gray100}`,fontSize:"12px"}}>
+                      <span style={{color:T.gray400,fontWeight:600}}>{doc.label}{doc.required&&<span style={{color:"#c0392b"}}> *</span>}</span>
+                      <span style={{color:done?T.green:"#c0392b",fontWeight:800}}>{done?"✓ Uploaded":doc.required?"Missing":"—"}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              {!allRequiredUploaded&&(
+                <div style={{background:"#fef2f2",border:"1px solid #fca5a5",padding:"11px 14px",marginBottom:"14px",fontSize:"11px",color:"#c0392b",fontWeight:600}}>
+                  Some required documents are missing. You can still submit the depot for KYB review later from the KYB tab.
+                </div>
+              )}
+              {submitErr&&<div style={{color:"#c0392b",fontSize:"12px",fontWeight:600,marginBottom:"12px",padding:"10px 14px",background:"#fef2f2",border:"1px solid #fca5a5"}}>{submitErr}</div>}
+              <div style={{display:"flex",gap:"10px"}}>
+                {!allRequiredUploaded&&(
+                  <button onClick={()=>onDone(createdDepot?.id)} style={{...btnBase,background:T.gray100,color:T.black,flex:"0 0 auto",width:"auto",padding:"13px 20px"}}>Go to Depot</button>
+                )}
+                <button disabled={!allRequiredUploaded||submitting} onClick={handleSubmitKYB} style={{...btnBase,flex:1,background:allRequiredUploaded&&!submitting?T.green:T.gray200,color:allRequiredUploaded&&!submitting?T.white:T.gray400,cursor:allRequiredUploaded&&!submitting?"pointer":"not-allowed"}}>
+                  {submitting?"Submitting…":"Submit for KYB Review →"}
+                </button>
+              </div>
+            </>
+          ):(
+            <div style={{textAlign:"center",padding:"32px 20px"}}>
+              <div style={{width:"56px",height:"56px",background:T.greenLight,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",fontSize:"22px"}}>✓</div>
+              <div style={{fontSize:"18px",fontWeight:800,color:T.black,marginBottom:"6px"}}>Documents Submitted!</div>
+              <div style={{fontSize:"13px",color:T.gray400,maxWidth:"360px",margin:"0 auto 24px"}}>Your KYB documents are under review. Verification typically takes 1–3 business days. You'll receive an SMS and email when approved.</div>
+              <div style={{border:`1px solid ${T.gray100}`,background:T.white,padding:"14px 18px",marginBottom:"24px",textAlign:"left"}}>
+                <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",marginBottom:"8px"}}>Review Timeline</div>
+                {[["Submitted","Now",T.green],["Document Check","Day 1",T.gray400],["Compliance Review","Day 1–2",T.gray400],["Approval","Day 2–3",T.gray400]].map(([l,t,c])=>(
+                  <div key={l} style={{display:"flex",justifyContent:"space-between",fontSize:"12px",padding:"6px 0",borderBottom:`1px solid ${T.gray100}`}}>
+                    <span style={{fontWeight:600,color:T.black}}>{l}</span><span style={{color:c,fontWeight:700}}>{t}</span>
+                  </div>
+                ))}
+              </div>
+              <button onClick={()=>onDone(createdDepot?.id)} style={{...btnBase,background:T.black,color:T.white}}>Go to Depot →</button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -2608,18 +3131,56 @@ function CreateDepotFlow({onSubmit,onCancel,isMobile}) {
    DEPOT KYB VIEW
 ════════════════════════════════════════════ */
 function DepotKYBView({depot,isMobile}) {
-  const [files,setFiles]=useState({});
-  const [submitted,setSubmitted]=useState(false);
+  const {user}=useAuthStore();
+  const [files,setFiles]=useState({});       // { key: File }
+  const [uploaded,setUploaded]=useState({}); // { key: filename } — confirmed uploads
+  const [uploading,setUploading]=useState({});
+  const [uploadErr,setUploadErr]=useState({});
+  const [submitting,setSubmitting]=useState(false);
+  const [submitted,setSubmitted]=useState(depot.kyb_status==="submitted");
+  const [submitErr,setSubmitErr]=useState("");
+
   const DOCS=[
-    {key:"nmdpra",label:"NMDPRA License Certificate",required:true,hint:"Current, unexpired license from the Department of Petroleum Resources"},
-    {key:"cac",label:"CAC Registration (Form C02/C07)",required:true,hint:"Certificate of Incorporation from the Corporate Affairs Commission"},
-    {key:"tax",label:"FIRS Tax Clearance Certificate",required:true,hint:"Tax clearance for the last 3 fiscal years"},
-    {key:"env",label:"DPR Environmental Permit",required:true,hint:"Valid environmental permit for the depot facility"},
-    {key:"utility",label:"Utility Bill (Depot Address)",required:false,hint:"Recent bill confirming the depot's physical address"},
+    {key:"nmdpra_license",  label:"NMDPRA License Certificate",        required:true,  hint:"Current, unexpired license from the Dept. of Petroleum Resources"},
+    {key:"cac_cert",        label:"CAC Registration (Form C02/C07)",   required:true,  hint:"Certificate of Incorporation from the Corporate Affairs Commission"},
+    {key:"tax_clearance",   label:"FIRS Tax Clearance Certificate",    required:true,  hint:"Tax clearance for the last 3 fiscal years"},
+    {key:"env_permit",      label:"DPR Environmental Permit",          required:true,  hint:"Valid environmental permit for the depot facility"},
+    {key:"proof_of_address",label:"Utility Bill (Depot Address)",      required:false, hint:"Recent bill confirming the depot's physical address"},
   ];
   const reqDocs=DOCS.filter(d=>d.required);
-  const allRequired=reqDocs.every(d=>files[d.key]);
-  if (submitted) return (
+  const doneCount=reqDocs.filter(d=>uploaded[d.key]).length;
+  const allRequired=doneCount===reqDocs.length;
+
+  const handleUpload=async(doc,file)=>{
+    if(!file||!user) return;
+    setUploading(u=>({...u,[doc.key]:true}));
+    setUploadErr(e=>({...e,[doc.key]:""}));
+    try{
+      await kybApi.uploadDocument(depot.id,user.id,doc.key,file);
+      setUploaded(u=>({...u,[doc.key]:file.name}));
+      setFiles(f=>({...f,[doc.key]:file}));
+    }catch(e){
+      setUploadErr(err=>({...err,[doc.key]:e.message||"Upload failed"}));
+    }finally{
+      setUploading(u=>({...u,[doc.key]:false}));
+    }
+  };
+
+  const handleSubmit=async()=>{
+    if(!allRequired||!depot.id) return;
+    setSubmitting(true);
+    setSubmitErr("");
+    try{
+      await kybApi.submit(depot.id);
+      setSubmitted(true);
+    }catch(e){
+      setSubmitErr(e.message||"Submission failed. Try again.");
+    }finally{
+      setSubmitting(false);
+    }
+  };
+
+  if(submitted) return (
     <div style={{textAlign:"center",padding:"40px 20px"}}>
       <div style={{width:"56px",height:"56px",background:T.greenLight,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",fontSize:"22px"}}>✓</div>
       <div style={{fontSize:"18px",fontWeight:800,color:T.black,marginBottom:"6px"}}>Documents Submitted</div>
@@ -2634,38 +3195,50 @@ function DepotKYBView({depot,isMobile}) {
       </div>
     </div>
   );
+
   return (
     <div>
       <div style={{background:T.amberLight,border:`1px solid ${T.amber}`,padding:"14px 18px",marginBottom:"20px"}}>
         <div style={{fontSize:"12px",fontWeight:800,color:"#8A5C00",marginBottom:"2px"}}>KYB Verification Required</div>
         <div style={{fontSize:"11px",color:"#8A5C00"}}>{depot.name} cannot receive orders until KYB documents are approved by Ventryl.</div>
       </div>
-      {DOCS.map(doc=>(
-        <div key={doc.key} style={{border:`1px solid ${files[doc.key]?T.green:T.gray100}`,background:T.white,padding:"16px",marginBottom:"10px",transition:"border-color 0.2s"}}>
-          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:"12px",flexWrap:isMobile?"wrap":"nowrap"}}>
-            <div style={{flex:1}}>
-              <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"3px",flexWrap:"wrap"}}>
-                <span style={{fontSize:"13px",fontWeight:800,color:T.black}}>{doc.label}</span>
-                {doc.required&&<span style={{background:T.redLight,color:T.red,fontSize:"9px",fontWeight:800,padding:"1px 5px"}}>REQUIRED</span>}
+
+      {DOCS.map(doc=>{
+        const done=!!uploaded[doc.key];
+        const busy=!!uploading[doc.key];
+        const err=uploadErr[doc.key];
+        return (
+          <div key={doc.key} style={{border:`1px solid ${done?T.green:err?T.red:T.gray100}`,background:T.white,padding:"16px",marginBottom:"10px",transition:"border-color 0.2s"}}>
+            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:"12px",flexWrap:isMobile?"wrap":"nowrap"}}>
+              <div style={{flex:1}}>
+                <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"3px",flexWrap:"wrap"}}>
+                  <span style={{fontSize:"13px",fontWeight:800,color:T.black}}>{doc.label}</span>
+                  {doc.required&&<span style={{background:T.redLight,color:T.red,fontSize:"9px",fontWeight:800,padding:"1px 5px"}}>REQUIRED</span>}
+                </div>
+                <div style={{fontSize:"11px",color:T.gray400}}>{doc.hint}</div>
+                {done&&<div style={{fontSize:"11px",color:T.greenDark,fontWeight:700,marginTop:"5px"}}>✓ {uploaded[doc.key]}</div>}
+                {err&&<div style={{fontSize:"11px",color:T.red,fontWeight:700,marginTop:"5px"}}>{err}</div>}
+                {busy&&<div style={{fontSize:"11px",color:T.blue,fontWeight:700,marginTop:"5px"}}>Uploading…</div>}
               </div>
-              <div style={{fontSize:"11px",color:T.gray400}}>{doc.hint}</div>
-              {files[doc.key]&&<div style={{fontSize:"11px",color:T.greenDark,fontWeight:700,marginTop:"5px"}}>✓ {files[doc.key]}</div>}
+              <label style={{background:busy?T.gray200:done?T.greenLight:T.black,color:busy?T.gray400:done?T.greenDark:T.white,padding:"8px 16px",fontSize:"11px",fontWeight:800,cursor:busy?"not-allowed":"pointer",fontFamily:F,flexShrink:0,minHeight:"38px",display:"flex",alignItems:"center",border:"none"}}>
+                {busy?"Uploading…":done?"✓ Replace":"Upload"}
+                <input type="file" style={{display:"none"}} accept=".pdf,.jpg,.jpeg,.png" disabled={busy}
+                  onChange={e=>e.target.files[0]&&handleUpload(doc,e.target.files[0])}/>
+              </label>
             </div>
-            <label style={{background:files[doc.key]?T.greenLight:T.black,color:files[doc.key]?T.greenDark:T.white,padding:"8px 16px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,flexShrink:0,minHeight:"38px",display:"flex",alignItems:"center",border:"none"}}>
-              {files[doc.key]?"✓ Replace":"Upload"}
-              <input type="file" style={{display:"none"}} accept=".pdf,.jpg,.png" onChange={e=>e.target.files[0]&&setFiles(f=>({...f,[doc.key]:e.target.files[0].name}))}/>
-            </label>
           </div>
-        </div>
-      ))}
+        );
+      })}
+
       <div style={{marginTop:"20px"}}>
-        <div style={{fontSize:"11px",color:T.gray400,marginBottom:"8px",fontWeight:600}}>{reqDocs.filter(d=>files[d.key]).length}/{reqDocs.length} required documents uploaded</div>
+        <div style={{fontSize:"11px",color:T.gray400,marginBottom:"8px",fontWeight:600}}>{doneCount}/{reqDocs.length} required documents uploaded</div>
         <div style={{height:"4px",background:T.gray100,borderRadius:"2px",overflow:"hidden",marginBottom:"16px"}}>
-          <div style={{height:"100%",width:`${(reqDocs.filter(d=>files[d.key]).length/reqDocs.length)*100}%`,background:allRequired?T.green:T.amber,transition:"width 0.3s"}}/>
+          <div style={{height:"100%",width:`${reqDocs.length>0?(doneCount/reqDocs.length)*100:0}%`,background:allRequired?T.green:T.amber,transition:"width 0.3s"}}/>
         </div>
-        <button disabled={!allRequired} onClick={()=>setSubmitted(true)}
-          style={{background:allRequired?T.black:T.gray200,color:allRequired?T.white:T.gray400,border:"none",padding:"13px",fontSize:"13px",fontWeight:800,cursor:allRequired?"pointer":"not-allowed",fontFamily:F,width:"100%",minHeight:"48px"}}>
-          Submit for Verification →
+        {submitErr&&<div style={{fontSize:"12px",color:T.red,fontWeight:700,marginBottom:"10px"}}>{submitErr}</div>}
+        <button disabled={!allRequired||submitting} onClick={handleSubmit}
+          style={{background:allRequired&&!submitting?T.black:T.gray200,color:allRequired&&!submitting?T.white:T.gray400,border:"none",padding:"13px",fontSize:"13px",fontWeight:800,cursor:allRequired&&!submitting?"pointer":"not-allowed",fontFamily:F,width:"100%",minHeight:"48px"}}>
+          {submitting?"Submitting…":"Submit for Verification →"}
         </button>
       </div>
     </div>
@@ -2783,11 +3356,13 @@ function OrderInboxPanel({incoming,isMobile,depot,onViewOrder}) {
 }
 
 function DepotOverview({depot,onUpdateDepot,onViewOrder,isMobile}) {
+  const {depotOrders,loadDepotOrders}=useVentrylStore();
+  useEffect(()=>{if(depot?.id)loadDepotOrders(depot.id);},[depot?.id]);
   const products=depot.products||[];
   const totalStockValue=products.reduce((s,p)=>s+(p.stock*p.pricePerLitre),0);
   const totalStock=products.reduce((s,p)=>s+p.stock,0);
   const lowStock=products.filter(p=>p.threshold>0&&p.stock<p.threshold);
-  const DEPOT_ORDERS=ORDERS.filter(o=>o.depot===depot.name);
+  const DEPOT_ORDERS=depotOrders[depot?.id]||[];
   return (
     <div>
       {/* Stock KPI strip */}
@@ -2813,7 +3388,7 @@ function DepotOverview({depot,onUpdateDepot,onViewOrder,isMobile}) {
       )}
 
       {/* ① ORDER INBOX — top priority */}
-      <OrderInboxPanel incoming={INCOMING.filter(o=>o.depot===depot.name||true)} isMobile={isMobile} depot={depot} onViewOrder={onViewOrder}/>
+      <OrderInboxPanel incoming={DEPOT_ORDERS} isMobile={isMobile} depot={depot} onViewOrder={onViewOrder}/>
 
       {/* ② STOCK LEVELS */}
       {products.length>0?(
@@ -2859,16 +3434,11 @@ function DepotOverview({depot,onUpdateDepot,onViewOrder,isMobile}) {
       {/* ③ REVENUE + RECENT ORDERS */}
       <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1.3fr 1fr",gap:"14px"}}>
         <Card>
-          <SectionHead title="Revenue" sub="Last 6 months"/>
-          <ResponsiveContainer width="100%" height={140}>
-            <AreaChart data={REVENUE_DATA} margin={{top:4,right:0,left:-20,bottom:0}}>
-              <CartesianGrid strokeDasharray="2 4" stroke={T.gray100} vertical={false}/>
-              <XAxis dataKey="month" tick={{fill:T.gray400,fontSize:10,fontFamily:F,fontWeight:600}} axisLine={false} tickLine={false}/>
-              <YAxis tick={{fill:T.gray400,fontSize:10}} axisLine={false} tickLine={false}/>
-              <Tooltip content={<ChartTip/>}/>
-              <Area type="monotone" dataKey="revenue" stroke={T.green} fill={T.greenLight} strokeWidth={2} name="Revenue (₦M)"/>
-            </AreaChart>
-          </ResponsiveContainer>
+          <SectionHead title="Revenue" sub="Lifetime orders"/>
+          <div style={{padding:"20px 0",textAlign:"center"}}>
+            <div style={{fontSize:"28px",fontWeight:800,color:T.green}}>₦{DEPOT_ORDERS.reduce((s,o)=>s+(o.value||0),0)>0?(DEPOT_ORDERS.reduce((s,o)=>s+(o.value||0),0)/1e6).toFixed(1)+"M":"—"}</div>
+            <div style={{fontSize:"11px",color:T.gray400,marginTop:"4px"}}>{DEPOT_ORDERS.length} total orders · {DEPOT_ORDERS.filter(o=>o.status==="delivered"||o.status==="collected").length} delivered</div>
+          </div>
         </Card>
         <Card>
           <SectionHead title="Recent Orders" sub={DEPOT_ORDERS.length>0?`${DEPOT_ORDERS.length} orders`:"No orders yet"}/>
@@ -3263,7 +3833,7 @@ function DepotDetailView({depot,onUpdateDepot,onViewOrder,isMobile}) {
         <div>
           {tab==="overview"&&<DepotOverview depot={depot} onUpdateDepot={onUpdateDepot} onViewOrder={onViewOrder} isMobile={isMobile}/>}
           {tab==="inventory"&&<DepotInventory depot={depot} onUpdateDepot={onUpdateDepot} isMobile={isMobile}/>}
-          {tab==="inbox"&&<DepotInbox isMobile={isMobile} onViewOrder={id=>onViewOrder&&onViewOrder(id)}/>}
+          {tab==="inbox"&&<DepotInbox depotId={depot?.id} isMobile={isMobile} onViewOrder={id=>onViewOrder&&onViewOrder(id)}/>}
           {tab==="schedule"&&<TruckSched isMobile={isMobile}/>}
           {tab==="buyers"&&<BuyerNetwork isMobile={isMobile}/>}
           {tab==="kyb"&&<DepotKYBView depot={depot} isMobile={isMobile}/>}
@@ -3278,6 +3848,9 @@ function DepotDetailView({depot,onUpdateDepot,onViewOrder,isMobile}) {
    MARKET PULSE WIDGET
 ════════════════════════════════════════════ */
 function MarketPulseWidget({onOrder}) {
+  const {marketDepots,marketDepotsLoaded,loadMarketDepots}=useVentrylStore();
+  useEffect(()=>{if(!marketDepotsLoaded)loadMarketDepots();},[]);
+  const depotsSource=marketDepotsLoaded&&marketDepots.length?marketDepots:DEPOTS;
   const PRODUCTS=[
     {key:"pms",  name:"PMS",  fullName:"Premium Motor Spirit", unit:"/L", change:+2.1, color:T.green},
     {key:"ago",  name:"AGO",  fullName:"Automotive Gas Oil",   unit:"/L", change:-0.8, color:T.blue},
@@ -3301,12 +3874,12 @@ function MarketPulseWidget({onOrder}) {
       {/* per-product summary rows */}
       <div style={{padding:"0 16px"}}>
         {PRODUCTS.map((p,i)=>{
-          const prices=DEPOTS.map(d=>d[p.key]).filter(Boolean);
+          const prices=depotsSource.map(d=>d[p.key]).filter(Boolean);
           if(!prices.length) return null;
           const best=Math.min(...prices);
           const high=Math.max(...prices);
-          const bestDepot=DEPOTS.find(d=>d[p.key]===best);
-          const isLast=i===PRODUCTS.length-1||PRODUCTS.slice(i+1).every(pp=>!DEPOTS.map(d=>d[pp.key]).filter(Boolean).length);
+          const bestDepot=depotsSource.find(d=>d[p.key]===best);
+          const isLast=i===PRODUCTS.length-1||PRODUCTS.slice(i+1).every(pp=>!depotsSource.map(d=>d[pp.key]).filter(Boolean).length);
           return (
             <div key={p.key} style={{padding:"10px 0",borderBottom:isLast?"none":`1px solid ${T.gray100}`}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"3px"}}>
@@ -3476,8 +4049,12 @@ function DisputeModal({onClose,orderId,product,vol}) {
 ════════════════════════════════════════════ */
 function BuyerOrderDetail({orderId,onBack,isMobile}) {
   const _placed = _placedOrdersStore.find(o=>o.id===orderId);
-  const order = _placed||ORDERS.find(o=>o.id===orderId)||INCOMING.find(o=>o.id===orderId);
-  const meta  = _placed?.meta||ORDER_META[orderId]||{};
+  const {buyerOrders,orderDetails,loadOrderDetail}=useVentrylStore();
+  // Load detail from DB if not already in session or cache
+  useEffect(()=>{if(!_placed)loadOrderDetail(orderId);},[orderId]);
+  const storeOrder=buyerOrders.find(o=>o.id===orderId);
+  const order = _placed||storeOrder||ORDERS.find(o=>o.id===orderId)||INCOMING.find(o=>o.id===orderId);
+  const meta  = _placed?.meta||orderDetails[orderId]||ORDER_META[orderId]||{};
 
   // local live-tracking state (synced from depot stores so changes persist across navigation)
   const [liveStatus,setLiveStatus]=useState(()=>_orderStatusStore[orderId]||order?.status||"pending");
@@ -3492,6 +4069,22 @@ function BuyerOrderDetail({orderId,onBack,isMobile}) {
   const [quoteStatus,setQuoteStatus]=useState(()=>(_deliveryQuoteStore[orderId]||{status:"none"}).status);
   const [counterInput,setCounterInput]=useState("");
   const [showCounterForm,setShowCounterForm]=useState(false);
+
+  // ── Realtime: update live state when Supabase pushes changes ──────
+  useOrderRealtime(orderId,(payload)=>{
+    const {table,new:n}=payload;
+    if(table==="orders"&&n?.status) setLiveStatus(n.status);
+    if(table==="order_trucks"&&n){
+      setLiveTrucks(prev=>{
+        const idx=prev.findIndex(t=>t.id===n.id);
+        if(idx>=0) return prev.map((t,i)=>i===idx?{...t,...n}:t);
+        return [...prev,n];
+      });
+    }
+    if(table==="delivery_negotiations"&&n){
+      if(n.status) setQuoteStatus(n.status);
+    }
+  });
 
   const approveDeliveryQuote=()=>{
     const newStatus="agreed";
@@ -3604,7 +4197,21 @@ function BuyerOrderDetail({orderId,onBack,isMobile}) {
 
           {/* Invoice — only after confirmed */}
           {deliveryConfirmed&&(
-            <button style={{background:T.black,color:T.white,border:"none",padding:"7px 14px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"36px"}}>
+            <button
+              onClick={()=>printInvoice({
+                orderId,
+                product,
+                vol,
+                pricePerLitre:order?.pricePerLitre||meta?.price_per_litre||0,
+                buyer:order?.buyer||"Chukwuma Fuels Ltd",
+                buyerAddr:"Lagos, Nigeria",
+                depot:order?.depot||meta?.depot||"Depot",
+                depotAddr:"Lagos, Nigeria",
+                depotLicense:meta?.license||"",
+                date:new Date().toLocaleDateString('en-NG',{day:'2-digit',month:'long',year:'numeric'}),
+                vat:true,
+              })}
+              style={{background:T.black,color:T.white,border:"none",padding:"7px 14px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"36px"}}>
               ⬇ Invoice
             </button>
           )}
@@ -4238,8 +4845,12 @@ function BuyerOrderDetail({orderId,onBack,isMobile}) {
 ════════════════════════════════════════════ */
 function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
   const _placed = _placedOrdersStore.find(o=>o.id===orderId);
-  const raw = _placed||INCOMING.find(o=>o.id===orderId)||ORDERS.find(o=>o.id===orderId);
-  const meta = _placed?.meta||ORDER_META[orderId]||{};
+  const {depotOrders,orderDetails,loadOrderDetail}=useVentrylStore();
+  useEffect(()=>{if(!_placed)loadOrderDetail(orderId);},[orderId]);
+  const allDepotOrders=Object.values(depotOrders).flat();
+  const dbRaw=allDepotOrders.find(o=>o.id===orderId);
+  const raw = _placed||dbRaw||INCOMING.find(o=>o.id===orderId)||ORDERS.find(o=>o.id===orderId);
+  const meta = _placed?.meta||orderDetails[orderId]||ORDER_META[orderId]||{};
 
   // Full order lifecycle state (initialized from module-level stores to survive navigation)
   const [localStatus,setLocalStatus]=useState(()=>_orderStatusStore[orderId]||raw?.status||"pending");
@@ -4821,6 +5432,43 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
             {waybillRef&&localStatus==="collected"&&<div style={{fontSize:"10px",color:T.greenDark,marginTop:"3px",fontWeight:600}}>Waybill: {waybillRef}</div>}
             {statusLog.length>0&&<div style={{fontSize:"10px",color:T.greenDark,marginTop:"4px",fontWeight:600}}>Completed: {statusLog[statusLog.length-1]?.time}</div>}
           </div>
+          <div style={{display:"flex",flexDirection:"column",gap:"7px",flexShrink:0}}>
+            <button
+              onClick={()=>printWaybill({
+                orderId,
+                product:orderProductLabel,
+                vol:meta.vol||raw.vol||0,
+                buyer:raw.buyer||"Buyer",
+                buyerAddr:"Lagos, Nigeria",
+                depot:depot?.name||"Depot",
+                depotAddr:depot?.location||"Lagos, Nigeria",
+                depotLicense:depot?.license||"",
+                trucks:truckList.length>0?truckList:buyerTrucks.filter(t=>t.plate),
+                bay,
+                loadRef:meta.loadRef||"",
+                waybillRef,
+                type:isPickup?"pickup":"delivery",
+              })}
+              style={{background:T.black,color:T.white,border:"none",padding:"8px 14px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"34px",whiteSpace:"nowrap"}}>
+              ⬇ Waybill
+            </button>
+            <button
+              onClick={()=>printInvoice({
+                orderId,
+                product:orderProductLabel,
+                vol:meta.vol||raw.vol||0,
+                pricePerLitre:finials.price_per_litre||0,
+                buyer:raw.buyer||"Buyer",
+                buyerAddr:"Lagos, Nigeria",
+                depot:depot?.name||"Depot",
+                depotAddr:depot?.location||"Lagos, Nigeria",
+                depotLicense:depot?.license||"",
+                vat:true,
+              })}
+              style={{background:T.white,color:T.black,border:`1px solid ${T.green}`,padding:"8px 14px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"34px",whiteSpace:"nowrap"}}>
+              ⬇ Invoice
+            </button>
+          </div>
         </div>
       )}
 
@@ -5136,9 +5784,14 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
    MESSAGE MODAL (shared — buyer↔depot)
 ════════════════════════════════════════════ */
 function UnifiedDash({depots,onOrder,onDepotClick,onNewDepot,onViewOrder,isMobile}) {
+  const {buyerOrders,walletNGN,priceHistory,depotOrders}=useVentrylStore();
+  const allOrders=[..._placedOrdersStore.slice().reverse(),...buyerOrders.filter(o=>!_placedOrdersStore.find(p=>p.id===o.id))];
   const verified=depots.filter(d=>d.kyb==="verified");
   const pending=depots.filter(d=>d.kyb!=="verified");
   const hasInbox=verified.length>0;
+  const chartData=priceHistory.length?priceHistory:PRICE_HISTORY;
+  // Aggregate real pending orders across all verified depots
+  const allDepotIncoming=verified.flatMap(d=>depotOrders[d.id]||[]);
   return (
     <div style={{display:"flex",flexDirection:"column",gap:"14px"}}>
 
@@ -5152,7 +5805,7 @@ function UnifiedDash({depots,onOrder,onDepotClick,onNewDepot,onViewOrder,isMobil
           <div style={{display:"flex",alignItems:"center",gap:"12px",flexWrap:"wrap"}}>
             <div style={{textAlign:"right"}}>
               <div style={{fontSize:"10px",fontWeight:700,color:"#555",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"2px"}}>Wallet</div>
-              <div style={{fontSize:isMobile?"18px":"22px",fontWeight:800,color:T.green}}>₦25,830,000</div>
+              <div style={{fontSize:isMobile?"18px":"22px",fontWeight:800,color:T.green}}>{walletNGN?`₦${walletNGN.balanceNGN.toLocaleString('en-NG')}`:"—"}</div>
             </div>
             <button onClick={onOrder} style={{background:T.green,color:T.black,border:"none",padding:"10px 18px",fontSize:"12px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"40px",whiteSpace:"nowrap"}}>+ Place Order</button>
           </div>
@@ -5173,13 +5826,14 @@ function UnifiedDash({depots,onOrder,onDepotClick,onNewDepot,onViewOrder,isMobil
       <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1.4fr 1fr",gap:"14px",alignItems:"start"}}>
         <div style={{display:"flex",flexDirection:"column",gap:"14px"}}>
           {hasInbox&&(
-            <OrderInboxPanel incoming={INCOMING} isMobile={isMobile} depot={null} onViewOrder={onViewOrder}/>
+            <OrderInboxPanel incoming={allDepotIncoming} isMobile={isMobile} depot={null} onViewOrder={onViewOrder}/>
           )}
           <Card>
-            <SectionHead title="Recent Orders" sub={`${ORDERS.length} orders`} right={<button onClick={()=>onViewOrder&&onViewOrder(ORDERS[0]?.id)} style={{background:"none",border:"none",fontSize:"11px",fontWeight:700,color:T.gray400,cursor:"pointer",fontFamily:F,padding:0}}>View all →</button>}/>
-            {ORDERS.map((o,i)=>(
+            <SectionHead title="Recent Orders" sub={`${allOrders.length} orders`} right={<button onClick={()=>onViewOrder&&onViewOrder(allOrders[0]?.id)} style={{background:"none",border:"none",fontSize:"11px",fontWeight:700,color:T.gray400,cursor:"pointer",fontFamily:F,padding:0}}>View all →</button>}/>
+            {allOrders.length===0&&<div style={{padding:"16px 0",fontSize:"12px",color:T.gray400,textAlign:"center"}}>No orders yet</div>}
+            {allOrders.slice(0,5).map((o,i,arr)=>(
               <div key={o.id} onClick={()=>onViewOrder&&onViewOrder(o.id)}
-                style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 0",borderBottom:i<ORDERS.length-1?`1px solid ${T.gray100}`:"none",gap:"8px",flexWrap:"wrap",cursor:"pointer"}}
+                style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 0",borderBottom:i<arr.length-1?`1px solid ${T.gray100}`:"none",gap:"8px",flexWrap:"wrap",cursor:"pointer"}}
                 onMouseEnter={e=>e.currentTarget.style.background=T.gray50}
                 onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                 <div>
@@ -5188,7 +5842,7 @@ function UnifiedDash({depots,onOrder,onDepotClick,onNewDepot,onViewOrder,isMobil
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
                   <span style={{fontSize:"12px",fontWeight:800,color:T.black}}>₦{(o.value/1e6).toFixed(1)}M</span>
-                  <Badge status={o.status}/>
+                  <Badge status={_orderStatusStore[o.id]||o.status}/>
                 </div>
               </div>
             ))}
@@ -5204,13 +5858,14 @@ function UnifiedDash({depots,onOrder,onDepotClick,onNewDepot,onViewOrder,isMobil
 /* ════════════════════════════════════════════
    PLATFORM SIDEBAR
 ════════════════════════════════════════════ */
-function PlatformSidebar({activeView,setActiveView,depots,onNewDepot,identity,isMobile,onSignOut}) {
+function PlatformSidebar({activeView,setActiveView,depots,onNewDepot,identity,isMobile,onSignOut,isAdmin}) {
   const ITEMS=[
     {id:"dash",label:"Dashboard",icon:"M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"},
     {id:"market",label:"Price Discovery",icon:"M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"},
     {id:"order_form",label:"Place Order",icon:"M12 4v16m8-8H4"},
     {id:"orders",label:"My Orders",icon:"M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"},
     {id:"wallet",label:"Wallet",icon:"M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"},
+    ...(isAdmin?[{id:"admin",label:"Admin Panel",icon:"M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z",adminBadge:true}]:[]),
   ];
   const GEAR="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z";
   const pendingKyb=depots.filter(d=>d.kyb!=="verified").length;
@@ -5258,7 +5913,9 @@ function PlatformSidebar({activeView,setActiveView,depots,onNewDepot,identity,is
           return (
             <button key={n.id} onClick={()=>setActiveView(n.id)}
               style={{width:"100%",display:"flex",alignItems:"center",gap:"9px",padding:"9px 12px",borderRadius:"5px",background:active?T.white:"transparent",color:active?T.black:"#888",border:"none",cursor:"pointer",marginBottom:"2px",fontFamily:F,fontSize:"12px",fontWeight:active?800:600,textAlign:"left",transition:"all 0.1s"}}>
-              <Icon d={n.icon} size={15}/><span>{n.label}</span>
+              <Icon d={n.icon} size={15}/>
+              <span style={{flex:1}}>{n.label}</span>
+              {n.adminBadge&&<span style={{background:T.green,color:T.black,fontSize:"8px",fontWeight:800,padding:"1px 5px",borderRadius:"2px",flexShrink:0}}>ADMIN</span>}
             </button>
           );
         })}
@@ -5295,8 +5952,10 @@ function PlatformSidebar({activeView,setActiveView,depots,onNewDepot,identity,is
           <div style={{minWidth:0}}>
             <div style={{fontSize:"11px",fontWeight:800,color:T.white,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{identity.name||""}</div>
             <div style={{fontSize:"10px",color:"#555"}}>{identity.role||""}</div>
+            {identity.vcs&&<div style={{fontSize:"9px",fontWeight:800,color:identity.vcs>=750?T.green:identity.vcs>=500?"#d97706":"#888",marginTop:"1px"}}>VCS {identity.vcs}</div>}
           </div>
         </div>
+        {identity.isAdmin&&<div style={{background:"#0A2A0A",color:T.green,fontSize:"9px",fontWeight:800,padding:"4px 8px",textAlign:"center",letterSpacing:"0.08em",marginBottom:"6px"}}>ADMIN ACCESS</div>}
         {onSignOut&&(
           <button onClick={onSignOut} style={{width:"100%",padding:"8px",background:"transparent",border:"1px solid #2A2A2A",color:"#666",fontFamily:F,fontSize:"11px",fontWeight:700,cursor:"pointer",textAlign:"center",letterSpacing:"0.04em"}}>
             Sign Out
@@ -5312,40 +5971,44 @@ function PlatformSidebar({activeView,setActiveView,depots,onNewDepot,identity,is
 ════════════════════════════════════════════ */
 function VentrylPlatform({bp, user, onSignOut}) {
   const {isMobile}=bp;
+  const {user:authUser}=useAuthStore();
+  const {ownerDepots,ownerDepotsLoaded,loadOwnerDepots,buyerOrders,buyerOrdersLoaded,loadBuyerOrders,priceHistory,loadPriceHistory}=useVentrylStore();
   const [activeView,setActiveView]=useState("dash");
-  const [depots,setDepots]=useState([
-    {id:"d1",name:"Nepal Energies",location:"Apapa, Lagos",kyb:"verified",license:"DL-2019-APR-0042",capacity:85000,orders:312,rating:4.8,
-      products:[
-        {id:"pms", name:"PMS",  pricePerLitre:795,  stock:61200, threshold:10000},
-        {id:"ago", name:"AGO",  pricePerLitre:1185, stock:28000, threshold:8000},
-        {id:"dpk", name:"DPK",  pricePerLitre:1338, stock:14500, threshold:5000},
-        {id:"lpg", name:"LPG",  pricePerLitre:1048, stock:9200,  threshold:3000},
-        {id:"atk", name:"ATK",  pricePerLitre:1885, stock:7800,  threshold:2500},
-      ],
-      stockHistory:[
-        {id:1,date:"Mar 10",product:"PMS",qty:33000,type:"delivery",ref:"DEL-2026-031"},
-        {id:2,date:"Mar 8",product:"PMS",qty:-27000,type:"dispatch",ref:"VTL-00841"},
-        {id:3,date:"Mar 6",product:"AGO",qty:33000,type:"delivery",ref:"DEL-2026-029"},
-        {id:4,date:"Mar 4",product:"PMS",qty:33000,type:"delivery",ref:"DEL-2026-027"},
-        {id:5,date:"Mar 3",product:"DPK",qty:15000,type:"delivery",ref:"DEL-2026-025"},
-        {id:6,date:"Mar 1",product:"LPG",qty:10000,type:"delivery",ref:"DEL-2026-022"},
-      ],
-    },
-    {id:"d2",name:"Silvergate Depot",location:"Port Harcourt, Rivers",kyb:"pending",license:"",capacity:0,products:[],stockHistory:[]},
-  ]);
   const [creatingDepot,setCreatingDepot]=useState(false);
 
-  const handleCreateDepot=(form)=>{
-    const id=`d${Date.now()}`;
-    const initProducts=form.products.map(name=>({
-      id:name.toLowerCase()+"_"+id,name,pricePerLitre:0,stock:0,threshold:5000,
-    }));
-    setDepots(prev=>[...prev,{id,name:form.name,location:form.location,kyb:"pending",license:form.license,capacity:Number(form.capacity)||0,products:initProducts,stockHistory:[]}]);
-    setCreatingDepot(false);
-    setActiveView(`depot:${id}`);
+  // Load real data on mount
+  useEffect(()=>{
+    if(!authUser?.id) return;
+    if(!ownerDepotsLoaded) loadOwnerDepots(authUser.id);
+    if(!buyerOrdersLoaded) loadBuyerOrders(authUser.id);
+    loadPriceHistory(7);
+  },[authUser?.id]);
+
+  // Merge DB depots with any locally created ones (pending DB round-trip)
+  const [localDepots,setLocalDepots]=useState([]);
+  const depots=[...ownerDepots,...localDepots.filter(ld=>!ownerDepots.find(d=>d.id===ld.id))];
+
+  const handleCreateDepot=async(form)=>{
+    // Create in DB; returns the newly created depot row (with id)
+    const created=await depotsApi.create({
+      ownerId:authUser.id,name:form.name,location:form.location,
+      state:form.state,lga:form.lga||form.location,
+      address:form.address,licenseNumber:form.license,licenseExpiry:form.expiry,
+      capacity:Number(form.capacity)||0,products:form.products,
+      contactName:form.contactName,contactPhone:form.contactPhone,
+      contactEmail:form.contactEmail,contactRole:form.contactRole,
+    });
+    // Add optimistic entry while we reload
+    const optimistic={id:created.id,name:form.name,location:form.location,kyb:"pending",license:form.license,capacity:Number(form.capacity)||0,products:form.products.map(n=>({id:n.toLowerCase()+"_"+created.id,name:n,pricePerLitre:0,stock:0,threshold:5000})),stockHistory:[]};
+    setLocalDepots(prev=>[...prev,optimistic]);
+    loadOwnerDepots(authUser.id); // background refresh
+    return created; // caller uses the id for KYB uploads
   };
   const handleUpdateDepot=(depotId,patch)=>{
-    setDepots(prev=>prev.map(d=>d.id===depotId?{...d,...patch}:d));
+    // Update local depots state so UI reflects immediately
+    setLocalDepots(prev=>prev.map(d=>d.id===depotId?{...d,...patch}:d));
+    // Also refresh from DB to get server truth
+    if(authUser?.id) loadOwnerDepots(authUser.id);
   };
 
   const [navHistory,setNavHistory]=useState([]);
@@ -5376,7 +6039,7 @@ function VentrylPlatform({bp, user, onSignOut}) {
     return {dash:"Dashboard",market:"Price Discovery",order_form:"Place Order",orders:"My Orders",wallet:"Wallet",settings:"Settings"}[activeView]||"Dashboard";
   };
 
-  const ALL_BUYER_ORDERS=[..._placedOrdersStore.slice().reverse(),...ORDERS];
+  const ALL_BUYER_ORDERS=[..._placedOrdersStore.slice().reverse(),...buyerOrders.filter(o=>!_placedOrdersStore.find(p=>p.id===o.id))];
   const ORDERS_VIEW=(
     <div>
       <div style={{fontSize:"14px",fontWeight:800,color:T.black,marginBottom:"14px"}}>My Orders</div>
@@ -5418,7 +6081,7 @@ function VentrylPlatform({bp, user, onSignOut}) {
   );
 
   const renderView=()=>{
-    if(creatingDepot)return <CreateDepotFlow onSubmit={handleCreateDepot} onCancel={()=>setCreatingDepot(false)} isMobile={isMobile}/>;
+    if(creatingDepot)return <CreateDepotFlow onCreateDepot={handleCreateDepot} onDone={(id)=>{setCreatingDepot(false);if(id)setActiveView(`depot:${id}`);}} onCancel={()=>setCreatingDepot(false)} isMobile={isMobile}/>;
     // depot_order:VTL-XXXXX:depotId — always handle first, regardless of activeDepot
     if(activeView.startsWith("depot_order:")){
       const parts=activeView.split(":");
@@ -5435,9 +6098,12 @@ function VentrylPlatform({bp, user, onSignOut}) {
       const orderId=activeView.replace("order:","");
       return <BuyerOrderDetail orderId={orderId} onBack={goBack} isMobile={isMobile}/>;
     }
+    if(activeView==="admin") return <AdminPanel isMobile={isMobile}/>;
     const map={
       dash:<UnifiedDash depots={depots} onOrder={()=>navigate("order_form")} onDepotClick={id=>navigate(`depot:${id}`)} onNewDepot={()=>setCreatingDepot(true)} onViewOrder={id=>{
-          const isIncoming=INCOMING.some(o=>o.id===id);
+          // Check if the id belongs to a depot inbox order (not a buyer order)
+          const allDepotOrderIds=Object.values(useVentrylStore.getState().depotOrders||{}).flat().map(o=>o.id);
+          const isIncoming=INCOMING.some(o=>o.id===id)||allDepotOrderIds.includes(id);
           if(isIncoming){const d=depots.find(d=>d.kyb==="verified")||depots[0];if(d){navigate(`depot_order:${id}:${d.id}`);return;}}
           navigate(`order:${id}`);
         }} isMobile={isMobile}/>,
@@ -5450,6 +6116,7 @@ function VentrylPlatform({bp, user, onSignOut}) {
     return map[activeView]||map.dash;
   };
 
+  const isAdmin=!!user?.isAdmin;
   const pendingKyb=depots.filter(d=>d.kyb!=="verified").length;
   const pills=[
     {bg:T.greenLight,color:T.greenDark,label:"KYB ✓"},
@@ -5460,14 +6127,14 @@ function VentrylPlatform({bp, user, onSignOut}) {
   const IDENTITY=user||{initials:"EC",bg:T.green,textColor:T.black,name:"Emeka Chukwuma",role:"Account Owner"};
   return (
     <div style={{display:"flex",minHeight:"100vh",fontFamily:F}}>
-      <PlatformSidebar activeView={activeView} setActiveView={navigate} depots={depots} onNewDepot={()=>setCreatingDepot(true)} identity={IDENTITY} isMobile={isMobile} onSignOut={onSignOut}/>
+      <PlatformSidebar activeView={activeView} setActiveView={navigate} depots={depots} onNewDepot={()=>setCreatingDepot(true)} identity={IDENTITY} isMobile={isMobile} onSignOut={onSignOut} isAdmin={isAdmin}/>
       <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
         <Topbar crumb={getCrumb()} isMobile={isMobile} portalLabel="Platform" pills={pills}/>
         <div style={{padding:isMobile?"14px 16px":"24px 28px",paddingBottom:isMobile?"80px":"24px",flex:1,overflowY:"auto"}}>
           {renderView()}
         </div>
       </div>
-      {isMobile&&<PlatformSidebar activeView={activeView} setActiveView={navigate} depots={depots} onNewDepot={()=>setCreatingDepot(true)} identity={IDENTITY} isMobile={true} onSignOut={onSignOut}/>}
+      {isMobile&&<PlatformSidebar activeView={activeView} setActiveView={navigate} depots={depots} onNewDepot={()=>setCreatingDepot(true)} identity={IDENTITY} isMobile={true} onSignOut={onSignOut} isAdmin={isAdmin}/>}
     </div>
   );
 }
@@ -5516,6 +6183,8 @@ export default function VentrylApp() {
     textColor:T.black,
     name:profile?.full_name||"",
     role:profile?.company_name||"",
+    isAdmin:!!profile?.is_admin,
+    vcs:profile?.vcs||300,
   };
 
   return (

@@ -7,7 +7,13 @@ import { supabase } from './supabase';
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function assertOk(error, context) {
-  if (error) throw new Error(`[${context}] ${error.message}`);
+  if (!error) return;
+  const msg = error.message
+    || error.error_description
+    || error.msg
+    || (typeof error === 'string' ? error : JSON.stringify(error));
+  console.error(`[${context}]`, error);
+  throw new Error(msg);
 }
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
@@ -23,6 +29,11 @@ export const auth = {
       },
     });
     assertOk(error, 'auth.signUp');
+    // Supabase returns user: null when the email is already registered
+    // (it silently "succeeds" to prevent email enumeration)
+    if (!data?.user) {
+      throw new Error('This email is already registered. Try signing in instead.');
+    }
     return data;
   },
 
@@ -137,7 +148,7 @@ export const depots = {
    * Create a new depot. Caller must have kyc_status = 'verified' on their
    * profile before invoking — the depot itself starts with kyb_status = 'pending'.
    */
-  async create({ ownerId, name, location, state, lga, address, licenseNumber, licenseExpiry, capacity, products }) {
+  async create({ ownerId, name, location, state, lga, address, licenseNumber, licenseExpiry, capacity, products, contactName, contactPhone, contactEmail, contactRole }) {
     const { data: depot, error: depotErr } = await supabase
       .from('depots')
       .insert({
@@ -155,18 +166,6 @@ export const depots = {
       .select()
       .single();
     assertOk(depotErr, 'depots.create');
-
-    if (products?.length) {
-      const productRows = products.map((product) => ({
-        depot_id: depot.id,
-        product,
-        price_per_litre: 0,
-        stock: 0,
-        threshold: 5000,
-      }));
-      const { error: prodErr } = await supabase.from('depot_products').insert(productRows);
-      assertOk(prodErr, 'depots.create:products');
-    }
 
     return depot;
   },
@@ -346,6 +345,9 @@ export const orders = {
       .select('status')
       .eq('id', orderId)
       .single();
+
+    // Validate client-side before hitting the DB trigger
+    if (current?.status) assertValidTransition(current.status, toStatus);
 
     const timestamps = {};
     if (toStatus === 'confirmed') timestamps.confirmed_at = new Date().toISOString();
@@ -578,6 +580,143 @@ export const wallet = {
   },
 };
 
+// ── Order State Machine (client-side mirror of DB trigger) ───────────────────
+
+const VALID_TRANSITIONS = {
+  pending:    ['confirmed', 'rejected', 'cancelled'],
+  confirmed:  ['loading', 'cancelled'],
+  loading:    ['in_transit'],
+  in_transit: ['delivered', 'collected', 'disputed'],
+  delivered:  ['disputed'],
+  collected:  [],
+  disputed:   ['delivered', 'collected'],
+  rejected:   [],
+  cancelled:  [],
+};
+
+/** Throws if the transition is not allowed. */
+export function assertValidTransition(from, to) {
+  if (from === to) return;
+  const allowed = VALID_TRANSITIONS[from] ?? [];
+  if (!allowed.includes(to)) {
+    throw new Error(`Cannot move order from "${from}" to "${to}". Allowed next states: ${allowed.join(', ') || 'none (terminal)'}.`);
+  }
+}
+
+// ── KYC (individual / company verification) ──────────────────────────────────
+
+export const kyc = {
+  /** Upload one KYC document to Supabase Storage and record it in kyc_documents. */
+  async uploadDocument(userId, type, file) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    const path = `${userId}/${type}-${Date.now()}.${ext}`;
+
+    const { error: upErr } = await supabase.storage
+      .from('kyc-documents')
+      .upload(path, file, { upsert: true, contentType: file.type });
+    assertOk(upErr, 'kyc.uploadDocument:storage');
+
+    const { error: dbErr } = await supabase
+      .from('kyc_documents')
+      .upsert(
+        { user_id: userId, type, file_path: path, file_name: file.name, file_size: file.size },
+        { onConflict: 'user_id,type' }
+      );
+    assertOk(dbErr, 'kyc.uploadDocument:db');
+
+    return path;
+  },
+
+  /** Get a short-lived signed URL to preview a private KYC document. */
+  async getSignedUrl(filePath, expiresIn = 300) {
+    const { data, error } = await supabase.storage
+      .from('kyc-documents')
+      .createSignedUrl(filePath, expiresIn);
+    assertOk(error, 'kyc.getSignedUrl');
+    return data.signedUrl;
+  },
+
+  /** Get all uploaded KYC documents for a user. */
+  async getDocuments(userId) {
+    const { data, error } = await supabase
+      .from('kyc_documents')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    assertOk(error, 'kyc.getDocuments');
+    return data ?? [];
+  },
+
+  /**
+   * Submit KYC for review. Sets kyc_status → 'submitted' on the profile.
+   * All required documents must be uploaded before calling this.
+   */
+  async submit(userId) {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ kyc_status: 'submitted', updated_at: new Date().toISOString() })
+      .eq('id', userId);
+    assertOk(error, 'kyc.submit');
+  },
+};
+
+// ── KYB (depot-level verification) ───────────────────────────────────────────
+
+export const kyb = {
+  /** Upload one KYB document to Supabase Storage and record it in kyb_documents. */
+  async uploadDocument(depotId, userId, type, file) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    const path = `${userId}/${depotId}/${type}-${Date.now()}.${ext}`;
+
+    const { error: upErr } = await supabase.storage
+      .from('kyb-documents')
+      .upload(path, file, { upsert: true, contentType: file.type });
+    assertOk(upErr, 'kyb.uploadDocument:storage');
+
+    const { error: dbErr } = await supabase
+      .from('kyb_documents')
+      .upsert(
+        { depot_id: depotId, type, file_path: path, file_name: file.name, file_size: file.size },
+        { onConflict: 'depot_id,type' }
+      );
+    assertOk(dbErr, 'kyb.uploadDocument:db');
+
+    return path;
+  },
+
+  /** Get a short-lived signed URL to preview a private KYB document. */
+  async getSignedUrl(filePath, expiresIn = 300) {
+    const { data, error } = await supabase.storage
+      .from('kyb-documents')
+      .createSignedUrl(filePath, expiresIn);
+    assertOk(error, 'kyb.getSignedUrl');
+    return data.signedUrl;
+  },
+
+  /** Get all uploaded KYB documents for a depot. */
+  async getDocuments(depotId) {
+    const { data, error } = await supabase
+      .from('kyb_documents')
+      .select('*')
+      .eq('depot_id', depotId)
+      .order('created_at', { ascending: false });
+    assertOk(error, 'kyb.getDocuments');
+    return data ?? [];
+  },
+
+  /**
+   * Submit KYB for review. Sets kyb_status → 'submitted' on the depot.
+   * All required documents must be uploaded before calling this.
+   */
+  async submit(depotId) {
+    const { error } = await supabase
+      .from('depots')
+      .update({ kyb_status: 'submitted', updated_at: new Date().toISOString() })
+      .eq('id', depotId);
+    assertOk(error, 'kyb.submit');
+  },
+};
+
 // ── Prices ───────────────────────────────────────────────────────────────────
 
 export const prices = {
@@ -611,5 +750,63 @@ export const prices = {
       })
     );
     return results;
+  },
+};
+
+// ── Notification Preferences ──────────────────────────────────────────────────
+
+export const notifications = {
+  /** Load notif_prefs from profiles row for a user */
+  async getPrefs(userId) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('notif_prefs')
+      .eq('id', userId)
+      .single();
+    assertOk(error, 'notifications.getPrefs');
+    return data?.notif_prefs ?? null;
+  },
+
+  /** Save notif_prefs to profiles row */
+  async savePrefs(userId, prefs) {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ notif_prefs: prefs })
+      .eq('id', userId);
+    assertOk(error, 'notifications.savePrefs');
+  },
+
+  /** Get notification history for a user (most recent first) */
+  async getHistory(userId, limit = 30) {
+    const { data, error } = await supabase
+      .from('notification_log')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    assertOk(error, 'notifications.getHistory');
+    return data ?? [];
+  },
+
+  /**
+   * Send a notification by calling the send-notification Edge Function.
+   * Falls back silently if the function is not deployed.
+   */
+  async send({ userId, type, channel = 'email', toEmail, toPhone, data = {} }) {
+    const { data: fnData, error } = await supabase.functions.invoke('send-notification', {
+      body: {
+        user_id: userId,
+        type,
+        channel,
+        to_email: toEmail,
+        to_phone: toPhone,
+        data,
+      },
+    });
+    if (error) {
+      console.warn('[notifications.send] Edge Function not available:', error.message);
+      return null;
+    }
+    return fnData;
   },
 };

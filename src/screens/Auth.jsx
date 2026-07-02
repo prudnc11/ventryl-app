@@ -188,6 +188,7 @@ function LoginScreen({ onSwitch }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email || !password) return;
+    if (!isConfigured) { setErr('Supabase is not connected yet. Add your VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.local and restart the dev server.'); return; }
     setLoading(true);
     setErr('');
     try {
@@ -213,7 +214,7 @@ function LoginScreen({ onSwitch }) {
             Forgot password?
           </button>
         </div>
-        <Btn type="submit" loading={loading} disabled={!email || !password || !isConfigured}>
+        <Btn type="submit" loading={loading} disabled={!email || !password}>
           Sign In →
         </Btn>
       </form>
@@ -243,6 +244,7 @@ function SignupScreen({ onSwitch }) {
     e.preventDefault();
     if (form.password !== form.confirmPassword) { setErr('Passwords do not match.'); return; }
     if (form.password.length < 8) { setErr('Password must be at least 8 characters.'); return; }
+    if (!isConfigured) { setErr('Supabase is not connected yet. Add your VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.local and restart the dev server.'); return; }
     setLoading(true);
     setErr('');
     try {
@@ -303,7 +305,7 @@ function SignupScreen({ onSwitch }) {
           <span style={{ color: T.black, fontWeight: 800 }}>Privacy Policy</span>.
         </div>
         <Btn type="submit" loading={loading}
-          disabled={!form.fullName || !form.companyName || !form.email || !form.password || !form.confirmPassword || !isConfigured}>
+          disabled={!form.fullName || !form.companyName || !form.email || !form.password || !form.confirmPassword}>
           Create Account →
         </Btn>
       </form>
@@ -328,6 +330,7 @@ function ForgotScreen({ onSwitch }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email) return;
+    if (!isConfigured) { setErr('Supabase is not connected yet. Add your VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.local and restart the dev server.'); return; }
     setLoading(true);
     setErr('');
     try {
@@ -356,7 +359,7 @@ function ForgotScreen({ onSwitch }) {
         <form onSubmit={handleSubmit}>
           <ErrorBanner msg={err} />
           <Field label="Email Address" type="email" value={email} onChange={setEmail} placeholder="you@company.ng" required />
-          <Btn type="submit" loading={loading} disabled={!email || !isConfigured}>
+          <Btn type="submit" loading={loading} disabled={!email}>
             Send Reset Link →
           </Btn>
           <div style={{ textAlign: 'center', marginTop: '8px' }}>

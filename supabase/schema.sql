@@ -240,6 +240,11 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS profiles_updated_at  ON profiles;
+DROP TRIGGER IF EXISTS wallets_updated_at   ON wallets;
+DROP TRIGGER IF EXISTS depots_updated_at    ON depots;
+DROP TRIGGER IF EXISTS negot_updated_at     ON delivery_negotiations;
+
 CREATE TRIGGER profiles_updated_at   BEFORE UPDATE ON profiles   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER wallets_updated_at    BEFORE UPDATE ON wallets    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER depots_updated_at     BEFORE UPDATE ON depots     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
