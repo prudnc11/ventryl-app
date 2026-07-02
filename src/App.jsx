@@ -3132,12 +3132,13 @@ function CreateDepotFlow({onCreateDepot,onDone,onCancel,isMobile}) {
 ════════════════════════════════════════════ */
 function DepotKYBView({depot,isMobile}) {
   const {user}=useAuthStore();
+  const {loadOwnerDepots}=useVentrylStore();
   const [files,setFiles]=useState({});       // { key: File }
   const [uploaded,setUploaded]=useState({}); // { key: filename } — confirmed uploads
   const [uploading,setUploading]=useState({});
   const [uploadErr,setUploadErr]=useState({});
   const [submitting,setSubmitting]=useState(false);
-  const [submitted,setSubmitted]=useState(depot.kyb_status==="submitted"||depot.kyb_status==="verified");
+  const [submitted,setSubmitted]=useState(depot.kyb==="submitted"||depot.kyb==="verified");
   const [submitErr,setSubmitErr]=useState("");
   const [loadingDocs,setLoadingDocs]=useState(true);
 
@@ -3188,6 +3189,7 @@ function DepotKYBView({depot,isMobile}) {
     try{
       await kybApi.submit(depot.id);
       setSubmitted(true);
+      if(user?.id) loadOwnerDepots(user.id); // refresh store so depot.kyb reflects 'submitted'
     }catch(e){
       setSubmitErr(e.message||"Submission failed. Try again.");
     }finally{
@@ -3783,7 +3785,7 @@ function DepotInventory({depot,onUpdateDepot,isMobile}) {
    DEPOT DETAIL VIEW
 ════════════════════════════════════════════ */
 function DepotDetailView({depot,onUpdateDepot,onViewOrder,isMobile}) {
-  const [tab,setTab]=useState(depot.kyb==="pending"?"kyb":"overview");
+  const [tab,setTab]=useState(depot.kyb==="pending"||depot.kyb==="submitted"?"kyb":"overview");
   const GEAR="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z";
   const lowStockCount=(depot.products||[]).filter(p=>p.threshold>0&&p.stock<p.threshold).length;
   const TABS=[
@@ -3820,6 +3822,15 @@ function DepotDetailView({depot,onUpdateDepot,onViewOrder,isMobile}) {
             <div style={{fontSize:"11px",color:"#8A5C00",marginTop:"1px"}}>Submit documents to start receiving orders.</div>
           </div>
           <button onClick={()=>setTab("kyb")} style={{background:"#8A5C00",color:T.white,border:"none",padding:"8px 14px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,flexShrink:0,minHeight:"36px"}}>Complete KYB →</button>
+        </div>
+      )}
+      {depot.kyb==="submitted"&&(
+        <div style={{background:T.blueLight,border:`1px solid ${T.blue}20`,padding:"11px 16px",marginBottom:"14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:"12px",flexWrap:"wrap"}}>
+          <div>
+            <div style={{fontSize:"12px",fontWeight:800,color:T.blue}}>KYB Under Review</div>
+            <div style={{fontSize:"11px",color:T.blue,marginTop:"1px",opacity:0.8}}>Documents submitted — Ventryl is reviewing your depot. Usually 1–3 business days.</div>
+          </div>
+          <button onClick={()=>setTab("kyb")} style={{background:T.blue,color:T.white,border:"none",padding:"8px 14px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,flexShrink:0,minHeight:"36px"}}>View Status →</button>
         </div>
       )}
       {lowStockCount>0&&depot.kyb==="verified"&&(
