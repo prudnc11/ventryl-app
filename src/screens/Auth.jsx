@@ -264,16 +264,57 @@ function SignupScreen({ onSwitch }) {
   };
 
   if (success) {
+    const KYC_DOCS = [
+      { label: 'NIN or BVN', note: 'National Identity Number or Bank Verification Number', required: true },
+      { label: 'CAC Certificate', note: 'Business registration certificate from Corporate Affairs Commission', required: true },
+      { label: 'Proof of Address', note: 'Utility bill or bank statement — less than 3 months old', required: true },
+      { label: 'International Passport or Driver\'s License', note: 'Valid government-issued photo ID', required: false },
+    ];
+
     return (
-      <AuthShell title="Check your email" sub="Confirm your account to get started">
-        <div style={{ textAlign: 'center', padding: '16px 0' }}>
-          <div style={{ width: '56px', height: '56px', background: T.greenLight, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: '26px' }}>✓</div>
-          <div style={{ fontSize: '15px', color: T.gray600, fontWeight: 600, lineHeight: 1.5, marginBottom: '28px' }}>
-            We sent a confirmation link to <strong style={{ color: T.black }}>{form.email}</strong>.<br />
-            Click the link to activate your account.
+      <AuthShell title="Account created!" sub="Two quick steps to get started">
+        {/* Step 1 — confirm email */}
+        <div style={{ border: `1px solid ${T.gray100}`, padding: '16px', marginBottom: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+            <div style={{ width: '28px', height: '28px', background: T.greenLight, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 800, color: T.greenDark, flexShrink: 0 }}>1</div>
+            <div>
+              <div style={{ fontSize: '13px', fontWeight: 800, color: T.black, marginBottom: '4px' }}>Confirm your email</div>
+              <div style={{ fontSize: '12px', color: T.gray600, lineHeight: 1.5 }}>
+                We sent a link to <strong style={{ color: T.black }}>{form.email}</strong>. Click it to activate your account.
+              </div>
+            </div>
           </div>
-          <Btn variant="ghost" onClick={() => onSwitch('login')}>Back to Sign In</Btn>
         </div>
+
+        {/* Step 2 — KYC */}
+        <div style={{ border: `1px solid ${T.gray100}`, padding: '16px', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '14px' }}>
+            <div style={{ width: '28px', height: '28px', background: T.gray100, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 800, color: T.gray400, flexShrink: 0 }}>2</div>
+            <div>
+              <div style={{ fontSize: '13px', fontWeight: 800, color: T.black, marginBottom: '4px' }}>Complete KYC verification</div>
+              <div style={{ fontSize: '12px', color: T.gray600, lineHeight: 1.5 }}>
+                After logging in, go to <strong style={{ color: T.black }}>Settings → Verification</strong> to upload your documents. KYC is required before you can create a depot.
+              </div>
+            </div>
+          </div>
+
+          {/* Document checklist */}
+          <div style={{ background: T.gray50, padding: '12px', borderLeft: `3px solid ${T.black}` }}>
+            <div style={{ fontSize: '10px', fontWeight: 800, color: T.gray400, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '10px' }}>Documents to prepare</div>
+            {KYC_DOCS.map(doc => (
+              <div key={doc.label} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', color: doc.required ? T.black : T.gray400, flexShrink: 0, marginTop: '1px' }}>{doc.required ? '●' : '○'}</span>
+                <div>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: T.black }}>{doc.label}</span>
+                  {!doc.required && <span style={{ fontSize: '10px', color: T.gray400, fontWeight: 600, marginLeft: '6px' }}>Optional</span>}
+                  <div style={{ fontSize: '10px', color: T.gray400, marginTop: '1px', lineHeight: 1.4 }}>{doc.note}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <Btn onClick={() => onSwitch('login')}>Sign In Now →</Btn>
       </AuthShell>
     );
   }

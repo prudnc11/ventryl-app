@@ -5971,10 +5971,11 @@ function PlatformSidebar({activeView,setActiveView,depots,onNewDepot,identity,is
 ════════════════════════════════════════════ */
 function VentrylPlatform({bp, user, onSignOut}) {
   const {isMobile}=bp;
-  const {user:authUser}=useAuthStore();
+  const {user:authUser,profile:authProfile}=useAuthStore();
   const {ownerDepots,ownerDepotsLoaded,loadOwnerDepots,buyerOrders,buyerOrdersLoaded,loadBuyerOrders,priceHistory,loadPriceHistory}=useVentrylStore();
   const [activeView,setActiveView]=useState("dash");
   const [creatingDepot,setCreatingDepot]=useState(false);
+  const [showKycGate,setShowKycGate]=useState(false);
 
   // Load real data on mount
   useEffect(()=>{
@@ -5988,6 +5989,10 @@ function VentrylPlatform({bp, user, onSignOut}) {
   const [localDepots,setLocalDepots]=useState([]);
   const depots=[...ownerDepots,...localDepots.filter(ld=>!ownerDepots.find(d=>d.id===ld.id))];
 
+  const handleNewDepot=()=>{
+    if(authProfile?.kyc_status!=="verified"){setShowKycGate(true);return;}
+    setCreatingDepot(true);
+  };
   const handleCreateDepot=async(form)=>{
     // Create in DB; returns the newly created depot row (with id)
     const created=await depotsApi.create({
@@ -6080,6 +6085,28 @@ function VentrylPlatform({bp, user, onSignOut}) {
     </div>
   );
 
+  const KYC_GATE_MODAL=showKycGate&&(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:"20px"}}>
+      <div style={{background:T.white,maxWidth:"420px",width:"100%",padding:"28px",fontFamily:F}}>
+        <div style={{width:"44px",height:"44px",background:T.amberLight,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:"16px",fontSize:"20px"}}>🔒</div>
+        <div style={{fontSize:"16px",fontWeight:800,color:T.black,marginBottom:"8px"}}>KYC Verification Required</div>
+        <div style={{fontSize:"13px",color:"#555",lineHeight:1.6,marginBottom:"20px"}}>
+          You need to complete identity verification (KYC) before creating a depot.<br/><br/>
+          Go to <strong>Settings → Verification</strong> to upload your documents and submit for review.
+        </div>
+        <div style={{display:"flex",gap:"10px"}}>
+          <button onClick={()=>{setShowKycGate(false);navigate("settings");}}
+            style={{flex:1,background:T.black,color:T.white,border:"none",padding:"12px",fontSize:"13px",fontWeight:800,cursor:"pointer",fontFamily:F}}>
+            Go to Verification →
+          </button>
+          <button onClick={()=>setShowKycGate(false)}
+            style={{flex:"0 0 auto",background:T.white,color:T.gray600,border:`1px solid ${T.gray200}`,padding:"12px 16px",fontSize:"13px",fontWeight:700,cursor:"pointer",fontFamily:F}}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
   const renderView=()=>{
     if(creatingDepot)return <CreateDepotFlow onCreateDepot={handleCreateDepot} onDone={(id)=>{setCreatingDepot(false);if(id)setActiveView(`depot:${id}`);}} onCancel={()=>setCreatingDepot(false)} isMobile={isMobile}/>;
     // depot_order:VTL-XXXXX:depotId — always handle first, regardless of activeDepot
@@ -6100,7 +6127,7 @@ function VentrylPlatform({bp, user, onSignOut}) {
     }
     if(activeView==="admin") return <AdminPanel isMobile={isMobile}/>;
     const map={
-      dash:<UnifiedDash depots={depots} onOrder={()=>navigate("order_form")} onDepotClick={id=>navigate(`depot:${id}`)} onNewDepot={()=>setCreatingDepot(true)} onViewOrder={id=>{
+      dash:<UnifiedDash depots={depots} onOrder={()=>navigate("order_form")} onDepotClick={id=>navigate(`depot:${id}`)} onNewDepot={handleNewDepot} onViewOrder={id=>{
           // Check if the id belongs to a depot inbox order (not a buyer order)
           const allDepotOrderIds=Object.values(useVentrylStore.getState().depotOrders||{}).flat().map(o=>o.id);
           const isIncoming=INCOMING.some(o=>o.id===id)||allDepotOrderIds.includes(id);
@@ -6127,14 +6154,15 @@ function VentrylPlatform({bp, user, onSignOut}) {
   const IDENTITY=user||{initials:"EC",bg:T.green,textColor:T.black,name:"Emeka Chukwuma",role:"Account Owner"};
   return (
     <div style={{display:"flex",minHeight:"100vh",fontFamily:F}}>
-      <PlatformSidebar activeView={activeView} setActiveView={navigate} depots={depots} onNewDepot={()=>setCreatingDepot(true)} identity={IDENTITY} isMobile={isMobile} onSignOut={onSignOut} isAdmin={isAdmin}/>
+      {KYC_GATE_MODAL}
+      <PlatformSidebar activeView={activeView} setActiveView={navigate} depots={depots} onNewDepot={handleNewDepot} identity={IDENTITY} isMobile={isMobile} onSignOut={onSignOut} isAdmin={isAdmin}/>
       <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
         <Topbar crumb={getCrumb()} isMobile={isMobile} portalLabel="Platform" pills={pills}/>
         <div style={{padding:isMobile?"14px 16px":"24px 28px",paddingBottom:isMobile?"80px":"24px",flex:1,overflowY:"auto"}}>
           {renderView()}
         </div>
       </div>
-      {isMobile&&<PlatformSidebar activeView={activeView} setActiveView={navigate} depots={depots} onNewDepot={()=>setCreatingDepot(true)} identity={IDENTITY} isMobile={true} onSignOut={onSignOut} isAdmin={isAdmin}/>}
+      {isMobile&&<PlatformSidebar activeView={activeView} setActiveView={navigate} depots={depots} onNewDepot={handleNewDepot} identity={IDENTITY} isMobile={true} onSignOut={onSignOut} isAdmin={isAdmin}/>}
     </div>
   );
 }
