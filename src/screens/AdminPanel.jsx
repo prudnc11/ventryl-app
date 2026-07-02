@@ -83,6 +83,70 @@ function VcsPill({ score }) {
   );
 }
 
+// ── Document viewer panel ──────────────────────────────────────────────────────
+function DocViewer({ bucket, docs, onClose }) {
+  const [urls, setUrls] = useState({});
+  const [loadingUrls, setLoadingUrls] = useState(true);
+
+  useEffect(() => {
+    if (!docs || docs.length === 0) { setLoadingUrls(false); return; }
+    (async () => {
+      const signed = {};
+      await Promise.all(docs.map(async (doc) => {
+        const { data } = await sb.storage.from(bucket).createSignedUrl(doc.file_path, 3600);
+        if (data?.signedUrl) signed[doc.id] = data.signedUrl;
+      }));
+      setUrls(signed);
+      setLoadingUrls(false);
+    })();
+  }, [docs, bucket]);
+
+  const DOC_LABELS = {
+    nmdpra_license: 'NMDPRA License',
+    cac_cert: 'CAC Certificate',
+    tax_clearance: 'Tax Clearance',
+    env_permit: 'Environmental Permit',
+    proof_of_address: 'Proof of Address',
+    director_id: 'Director ID',
+    tank_calibration: 'Tank Calibration',
+    nin: 'NIN',
+    passport: 'International Passport',
+    drivers_license: "Driver's License",
+  };
+
+  return (
+    <div style={{ background: T.gray50, border: `1px solid ${T.gray200}`, padding: '16px 18px', marginTop: '12px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+        <span style={{ fontSize: '12px', fontWeight: 800, color: T.black }}>Submitted Documents</span>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: T.gray400, padding: '0 4px', lineHeight: 1 }}>✕</button>
+      </div>
+      {loadingUrls && <div style={{ fontSize: '12px', color: T.gray400 }}>Generating signed links…</div>}
+      {!loadingUrls && docs.length === 0 && (
+        <div style={{ fontSize: '12px', color: T.gray400 }}>No documents uploaded yet.</div>
+      )}
+      {!loadingUrls && docs.map(doc => (
+        <div key={doc.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: T.white, border: `1px solid ${T.gray100}`, marginBottom: '6px' }}>
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: T.black }}>{DOC_LABELS[doc.type] || doc.type}</div>
+            <div style={{ fontSize: '10px', color: T.gray400, marginTop: '2px' }}>{doc.file_name} {doc.file_size ? `· ${(doc.file_size / 1024).toFixed(0)} KB` : ''}</div>
+          </div>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            <Badge status={doc.status} />
+            {urls[doc.id] ? (
+              <a href={urls[doc.id]} target="_blank" rel="noreferrer"
+                style={{ background: T.black, color: T.white, fontSize: '10px', fontWeight: 800, padding: '5px 10px', textDecoration: 'none' }}>
+                View
+              </a>
+            ) : (
+              <span style={{ fontSize: '10px', color: T.gray400 }}>No link</span>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── KYC Review Tab ─────────────────────────────────────────────────────────────
 function KycReview({ isMobile }) {
   const [rows, setRows] = useState([]);
@@ -91,6 +155,9 @@ function KycReview({ isMobile }) {
   const [acting, setActing] = useState({});
   const [rejectReason, setRejectReason] = useState({});
   const [showReject, setShowReject] = useState({});
+  const [expanded, setExpanded] = useState({});
+  const [docs, setDocs] = useState({});
+  const [loadingDocs, setLoadingDocs] = useState({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -106,11 +173,20 @@ function KycReview({ isMobile }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const act = async (userId, action, reason) => {
+  const toggleExpand = async (userId) => {
+    const nowOpen = !expanded[userId];
+    setExpanded(e => ({ ...e, [userId]: nowOpen }));
+    if (nowOpen && !docs[userId]) {
+      setLoadingDocs(l => ({ ...l, [userId]: true }));
+      const { data } = await sb.from('kyc_documents').select('*').eq('user_id', userId);
+      setDocs(d => ({ ...d, [userId]: data || [] }));
+      setLoadingDocs(l => ({ ...l, [userId]: false }));
+    }
+  };
+
+  const act = async (userId, action) => {
     setActing(a => ({ ...a, [userId]: action }));
-    const updates = action === 'approve'
-      ? { kyc_status: 'verified' }
-      : { kyc_status: 'rejected' };
+    const updates = action === 'approve' ? { kyc_status: 'verified' } : { kyc_status: 'rejected' };
     const { error } = await sb.from('profiles').update(updates).eq('id', userId);
     if (error) { setErr(error.message); setActing(a => ({ ...a, [userId]: null })); return; }
     setRows(r => r.filter(u => u.id !== userId));
@@ -131,14 +207,16 @@ function KycReview({ isMobile }) {
       {rows.map(u => (
         <div key={u.id} style={{ border: `1px solid ${T.gray100}`, background: T.white, marginBottom: '10px', padding: '16px 18px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => toggleExpand(u.id)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
                 <span style={{ fontSize: '13px', fontWeight: 800, color: T.black }}>{u.full_name || '—'}</span>
                 <Badge status={u.kyc_status} />
-                <VcsPill score={u.vcs_score || 300} />
+                <VcsPill score={u.vcs_score || 500} />
               </div>
               <div style={{ fontSize: '11px', color: T.gray400 }}>{u.email} · {u.company_name || 'No company'}</div>
-              <div style={{ fontSize: '10px', color: T.gray400, marginTop: '2px' }}>Submitted: {new Date(u.created_at).toLocaleDateString('en-NG')}</div>
+              <div style={{ fontSize: '10px', color: T.blue, marginTop: '4px', fontWeight: 600 }}>
+                {expanded[u.id] ? '▲ Hide documents' : '▼ View documents & details'}
+              </div>
             </div>
             <div style={{ display: 'flex', gap: '7px', flexShrink: 0 }}>
               <button onClick={() => setShowReject(s => ({ ...s, [u.id]: !s[u.id] }))}
@@ -157,12 +235,17 @@ function KycReview({ isMobile }) {
               <input value={rejectReason[u.id] || ''} onChange={e => setRejectReason(r => ({ ...r, [u.id]: e.target.value }))}
                 placeholder="Rejection reason (required)"
                 style={{ width: '100%', border: `1px solid ${T.red}`, padding: '9px 12px', fontFamily: F, fontSize: '12px', marginBottom: '8px', outline: 'none', boxSizing: 'border-box' }} />
-              <button onClick={() => { if (!rejectReason[u.id]?.trim()) return; act(u.id, 'reject', rejectReason[u.id]); setShowReject(s => ({ ...s, [u.id]: false })); }}
+              <button onClick={() => { if (!rejectReason[u.id]?.trim()) return; act(u.id, 'reject'); setShowReject(s => ({ ...s, [u.id]: false })); }}
                 disabled={!rejectReason[u.id]?.trim() || !!acting[u.id]}
                 style={{ background: rejectReason[u.id]?.trim() ? T.red : T.gray200, color: rejectReason[u.id]?.trim() ? T.white : T.gray400, border: 'none', padding: '8px 16px', fontSize: '11px', fontWeight: 800, cursor: rejectReason[u.id]?.trim() ? 'pointer' : 'not-allowed', fontFamily: F }}>
                 {acting[u.id] === 'reject' ? 'Rejecting…' : 'Confirm Rejection'}
               </button>
             </div>
+          )}
+          {expanded[u.id] && (
+            loadingDocs[u.id]
+              ? <div style={{ padding: '12px', fontSize: '12px', color: T.gray400 }}>Loading documents…</div>
+              : <DocViewer bucket="kyc-documents" docs={docs[u.id] || []} onClose={() => setExpanded(e => ({ ...e, [u.id]: false }))} />
           )}
         </div>
       ))}
@@ -178,12 +261,15 @@ function KybReview({ isMobile }) {
   const [acting, setActing] = useState({});
   const [showReject, setShowReject] = useState({});
   const [rejectReason, setRejectReason] = useState({});
+  const [expanded, setExpanded] = useState({});
+  const [docs, setDocs] = useState({});
+  const [loadingDocs, setLoadingDocs] = useState({});
 
   useEffect(() => {
     (async () => {
       const { data, error } = await sb
         .from('depots')
-        .select('id, name, location, kyb_status, license_number, created_at, profiles!owner_id(full_name, email)')
+        .select('id, name, location, state, lga, address, capacity, license_number, kyb_status, contact_name, contact_phone, contact_email, contact_role, created_at, profiles!owner_id(full_name, email)')
         .in('kyb_status', ['submitted', 'rejected'])
         .order('created_at', { ascending: false });
       if (error) { setErr(error.message); setLoading(false); return; }
@@ -191,6 +277,17 @@ function KybReview({ isMobile }) {
       setLoading(false);
     })();
   }, []);
+
+  const toggleExpand = async (depotId) => {
+    const nowOpen = !expanded[depotId];
+    setExpanded(e => ({ ...e, [depotId]: nowOpen }));
+    if (nowOpen && !docs[depotId]) {
+      setLoadingDocs(l => ({ ...l, [depotId]: true }));
+      const { data } = await sb.from('kyb_documents').select('*').eq('depot_id', depotId);
+      setDocs(d => ({ ...d, [depotId]: data || [] }));
+      setLoadingDocs(l => ({ ...l, [depotId]: false }));
+    }
+  };
 
   const act = async (depotId, action) => {
     setActing(a => ({ ...a, [depotId]: action }));
@@ -215,15 +312,17 @@ function KybReview({ isMobile }) {
       {rows.map(d => (
         <div key={d.id} style={{ border: `1px solid ${T.gray100}`, background: T.white, marginBottom: '10px', padding: '16px 18px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => toggleExpand(d.id)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
                 <span style={{ fontSize: '13px', fontWeight: 800, color: T.black }}>{d.name}</span>
                 <Badge status={d.kyb_status} />
-                <VcsPill score={300} />
               </div>
               <div style={{ fontSize: '11px', color: T.gray400 }}>{d.location}{d.license_number ? ` · ${d.license_number}` : ''}</div>
               <div style={{ fontSize: '11px', color: T.gray400, marginTop: '2px' }}>
                 Owner: {d.profiles?.full_name || '—'} · {d.profiles?.email || '—'}
+              </div>
+              <div style={{ fontSize: '10px', color: T.blue, marginTop: '4px', fontWeight: 600 }}>
+                {expanded[d.id] ? '▲ Hide details' : '▼ View KYB info & documents'}
               </div>
             </div>
             <div style={{ display: 'flex', gap: '7px', flexShrink: 0 }}>
@@ -249,6 +348,38 @@ function KybReview({ isMobile }) {
               </button>
             </div>
           )}
+          {expanded[d.id] && (
+            <div style={{ marginTop: '12px', borderTop: `1px solid ${T.gray100}`, paddingTop: '12px' }}>
+              {/* Depot info grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
+                {[
+                  ['State', d.state],
+                  ['LGA', d.lga],
+                  ['Capacity', d.capacity ? `${Number(d.capacity).toLocaleString()} L` : '—'],
+                  ['License #', d.license_number || '—'],
+                  ['Address', d.address || '—'],
+                ].map(([label, val]) => (
+                  <div key={label} style={{ background: T.gray50, padding: '8px 10px', border: `1px solid ${T.gray100}` }}>
+                    <div style={{ fontSize: '9px', fontWeight: 700, color: T.gray400, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: T.black, marginTop: '2px' }}>{val || '—'}</div>
+                  </div>
+                ))}
+              </div>
+              {/* Operations contact */}
+              {(d.contact_name || d.contact_phone || d.contact_email) && (
+                <div style={{ background: T.blueLight, border: `1px solid ${T.blue}20`, padding: '10px 12px', marginBottom: '12px' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 800, color: T.blue, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Operations Contact</div>
+                  <div style={{ fontSize: '12px', color: T.black, fontWeight: 600 }}>{d.contact_name}{d.contact_role ? ` · ${d.contact_role}` : ''}</div>
+                  <div style={{ fontSize: '11px', color: T.gray600, marginTop: '2px' }}>{d.contact_phone} {d.contact_email ? `· ${d.contact_email}` : ''}</div>
+                </div>
+              )}
+              {/* Documents */}
+              {loadingDocs[d.id]
+                ? <div style={{ fontSize: '12px', color: T.gray400 }}>Loading documents…</div>
+                : <DocViewer bucket="kyb-documents" docs={docs[d.id] || []} onClose={() => setExpanded(e => ({ ...e, [d.id]: false }))} />
+              }
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -266,8 +397,8 @@ function AllOrders({ isMobile }) {
     (async () => {
       const { data, error } = await sb
         .from('orders')
-        .select('id, status, total_volume, total_value, created_at, profiles!buyer_id(full_name), depots(name)')
-        .order('created_at', { ascending: false })
+        .select('id, status, total_volume, total_value, placed_at, profiles!buyer_id(full_name), depots(name)')
+        .order('placed_at', { ascending: false })
         .limit(200);
       if (error) { setErr(error.message); setLoading(false); return; }
       setOrders(data || []);
@@ -297,7 +428,7 @@ function AllOrders({ isMobile }) {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: T.black }}>
-              {['Order', 'Buyer', 'Depot', 'Volume', 'Value', 'Status', 'Date'].map(h => (
+              {['Order', 'Buyer', 'Depot', 'Volume', 'Value', 'Status', 'Placed'].map(h => (
                 <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: T.white, textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>{h}</th>
               ))}
             </tr>
@@ -311,7 +442,7 @@ function AllOrders({ isMobile }) {
                 <td style={{ padding: '10px 12px', fontSize: '12px', color: T.black }}>{((o.total_volume || 0) / 1000).toFixed(0)}k L</td>
                 <td style={{ padding: '10px 12px', fontSize: '12px', color: T.black }}>₦{((o.total_value || 0) / 1e6).toFixed(1)}M</td>
                 <td style={{ padding: '10px 12px' }}><Badge status={o.status} /></td>
-                <td style={{ padding: '10px 12px', fontSize: '11px', color: T.gray400 }}>{new Date(o.created_at).toLocaleDateString('en-NG')}</td>
+                <td style={{ padding: '10px 12px', fontSize: '11px', color: T.gray400 }}>{o.placed_at ? new Date(o.placed_at).toLocaleDateString('en-NG') : '—'}</td>
               </tr>
             ))}
           </tbody>
@@ -462,7 +593,7 @@ function UsersTable({ isMobile }) {
   }, []);
 
   const filtered = search
-    ? users.filter(u => (u.full_name + u.email + u.company_name).toLowerCase().includes(search.toLowerCase()))
+    ? users.filter(u => ((u.full_name || '') + (u.email || '') + (u.company_name || '')).toLowerCase().includes(search.toLowerCase()))
     : users;
 
   if (loading) return <Spinner />;
@@ -487,7 +618,7 @@ function UsersTable({ isMobile }) {
                 <td style={{ padding: '9px 12px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
                     <div style={{ width: '26px', height: '26px', background: T.black, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 800, color: T.white, flexShrink: 0 }}>
-                      {(u.full_name || '?')[0].toUpperCase()}
+                      {((u.full_name || '?')[0] || '?').toUpperCase()}
                     </div>
                     <div>
                       <div style={{ fontSize: '12px', fontWeight: 700, color: T.black }}>{u.full_name || '—'}</div>
@@ -495,10 +626,10 @@ function UsersTable({ isMobile }) {
                     </div>
                   </div>
                 </td>
-                <td style={{ padding: '9px 12px', fontSize: '11px', color: T.gray600 }}>{u.email}</td>
+                <td style={{ padding: '9px 12px', fontSize: '11px', color: T.gray600 }}>{u.email || '—'}</td>
                 <td style={{ padding: '9px 12px', fontSize: '11px', color: T.gray600 }}>{u.company_name || '—'}</td>
                 <td style={{ padding: '9px 12px' }}><Badge status={u.kyc_status || 'pending'} /></td>
-                <td style={{ padding: '9px 12px' }}><VcsPill score={u.vcs_score || 300} /></td>
+                <td style={{ padding: '9px 12px' }}><VcsPill score={u.vcs_score || 500} /></td>
                 <td style={{ padding: '9px 12px', fontSize: '11px', color: T.gray400 }}>{new Date(u.created_at).toLocaleDateString('en-NG')}</td>
               </tr>
             ))}
