@@ -6,7 +6,7 @@ async function fetchProfile(userId) {
     .from('profiles')
     .select('*')
     .eq('id', userId)
-    .single();
+    .maybeSingle();
   return data ?? null;
 }
 

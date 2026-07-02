@@ -96,7 +96,7 @@ function KycReview({ isMobile }) {
     setLoading(true);
     const { data, error } = await sb
       .from('profiles')
-      .select('id, full_name, email, company_name, kyc_status, vcs, created_at')
+      .select('id, full_name, email, company_name, kyc_status, vcs_score, created_at')
       .in('kyc_status', ['submitted', 'rejected'])
       .order('created_at', { ascending: false });
     if (error) { setErr(error.message); setLoading(false); return; }
@@ -135,7 +135,7 @@ function KycReview({ isMobile }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
                 <span style={{ fontSize: '13px', fontWeight: 800, color: T.black }}>{u.full_name || '—'}</span>
                 <Badge status={u.kyc_status} />
-                <VcsPill score={u.vcs || 300} />
+                <VcsPill score={u.vcs_score || 300} />
               </div>
               <div style={{ fontSize: '11px', color: T.gray400 }}>{u.email} · {u.company_name || 'No company'}</div>
               <div style={{ fontSize: '10px', color: T.gray400, marginTop: '2px' }}>Submitted: {new Date(u.created_at).toLocaleDateString('en-NG')}</div>
@@ -183,7 +183,7 @@ function KybReview({ isMobile }) {
     (async () => {
       const { data, error } = await sb
         .from('depots')
-        .select('id, name, location, kyb_status, vcs, license, created_at, profiles!owner_id(full_name, email)')
+        .select('id, name, location, kyb_status, license_number, created_at, profiles!owner_id(full_name, email)')
         .in('kyb_status', ['submitted', 'rejected'])
         .order('created_at', { ascending: false });
       if (error) { setErr(error.message); setLoading(false); return; }
@@ -219,9 +219,9 @@ function KybReview({ isMobile }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
                 <span style={{ fontSize: '13px', fontWeight: 800, color: T.black }}>{d.name}</span>
                 <Badge status={d.kyb_status} />
-                <VcsPill score={d.vcs || 300} />
+                <VcsPill score={300} />
               </div>
-              <div style={{ fontSize: '11px', color: T.gray400 }}>{d.location}{d.license ? ` · ${d.license}` : ''}</div>
+              <div style={{ fontSize: '11px', color: T.gray400 }}>{d.location}{d.license_number ? ` · ${d.license_number}` : ''}</div>
               <div style={{ fontSize: '11px', color: T.gray400, marginTop: '2px' }}>
                 Owner: {d.profiles?.full_name || '—'} · {d.profiles?.email || '—'}
               </div>
@@ -266,7 +266,7 @@ function AllOrders({ isMobile }) {
     (async () => {
       const { data, error } = await sb
         .from('orders')
-        .select('id, status, vol_litres, total_value, created_at, profiles!buyer_id(full_name), depots(name)')
+        .select('id, status, total_volume, total_value, created_at, profiles!buyer_id(full_name), depots(name)')
         .order('created_at', { ascending: false })
         .limit(200);
       if (error) { setErr(error.message); setLoading(false); return; }
@@ -308,7 +308,7 @@ function AllOrders({ isMobile }) {
                 <td style={{ padding: '10px 12px', fontSize: '12px', fontWeight: 700, color: T.black }}>{o.id}</td>
                 <td style={{ padding: '10px 12px', fontSize: '12px', color: T.gray600 }}>{o.profiles?.full_name || '—'}</td>
                 <td style={{ padding: '10px 12px', fontSize: '12px', color: T.gray600 }}>{o.depots?.name || '—'}</td>
-                <td style={{ padding: '10px 12px', fontSize: '12px', color: T.black }}>{((o.vol_litres || 0) / 1000).toFixed(0)}k L</td>
+                <td style={{ padding: '10px 12px', fontSize: '12px', color: T.black }}>{((o.total_volume || 0) / 1000).toFixed(0)}k L</td>
                 <td style={{ padding: '10px 12px', fontSize: '12px', color: T.black }}>₦{((o.total_value || 0) / 1e6).toFixed(1)}M</td>
                 <td style={{ padding: '10px 12px' }}><Badge status={o.status} /></td>
                 <td style={{ padding: '10px 12px', fontSize: '11px', color: T.gray400 }}>{new Date(o.created_at).toLocaleDateString('en-NG')}</td>
@@ -452,7 +452,7 @@ function UsersTable({ isMobile }) {
     (async () => {
       const { data, error } = await sb
         .from('profiles')
-        .select('id, full_name, email, company_name, kyc_status, vcs, is_admin, created_at')
+        .select('id, full_name, email, company_name, kyc_status, vcs_score, is_admin, created_at')
         .order('created_at', { ascending: false })
         .limit(200);
       if (error) { setErr(error.message); setLoading(false); return; }
@@ -498,7 +498,7 @@ function UsersTable({ isMobile }) {
                 <td style={{ padding: '9px 12px', fontSize: '11px', color: T.gray600 }}>{u.email}</td>
                 <td style={{ padding: '9px 12px', fontSize: '11px', color: T.gray600 }}>{u.company_name || '—'}</td>
                 <td style={{ padding: '9px 12px' }}><Badge status={u.kyc_status || 'pending'} /></td>
-                <td style={{ padding: '9px 12px' }}><VcsPill score={u.vcs || 300} /></td>
+                <td style={{ padding: '9px 12px' }}><VcsPill score={u.vcs_score || 300} /></td>
                 <td style={{ padding: '9px 12px', fontSize: '11px', color: T.gray400 }}>{new Date(u.created_at).toLocaleDateString('en-NG')}</td>
               </tr>
             ))}
