@@ -3137,8 +3137,23 @@ function DepotKYBView({depot,isMobile}) {
   const [uploading,setUploading]=useState({});
   const [uploadErr,setUploadErr]=useState({});
   const [submitting,setSubmitting]=useState(false);
-  const [submitted,setSubmitted]=useState(depot.kyb_status==="submitted");
+  const [submitted,setSubmitted]=useState(depot.kyb_status==="submitted"||depot.kyb_status==="verified");
   const [submitErr,setSubmitErr]=useState("");
+  const [loadingDocs,setLoadingDocs]=useState(true);
+
+  // Load already-uploaded docs from DB on mount
+  useEffect(()=>{
+    if(!depot.id){setLoadingDocs(false);return;}
+    (async()=>{
+      const {data}=await supabase.from("kyb_documents").select("type,file_name").eq("depot_id",depot.id);
+      if(data&&data.length>0){
+        const map={};
+        data.forEach(d=>{map[d.type]=d.file_name;});
+        setUploaded(map);
+      }
+      setLoadingDocs(false);
+    })();
+  },[depot.id]);
 
   const DOCS=[
     {key:"nmdpra_license",  label:"NMDPRA License Certificate",        required:true,  hint:"Current, unexpired license from the Dept. of Petroleum Resources"},
@@ -3179,6 +3194,8 @@ function DepotKYBView({depot,isMobile}) {
       setSubmitting(false);
     }
   };
+
+  if(loadingDocs) return <div style={{padding:"40px",textAlign:"center",fontSize:"12px",color:T.gray400,fontFamily:F}}>Loading documents…</div>;
 
   if(submitted) return (
     <div style={{textAlign:"center",padding:"40px 20px"}}>
