@@ -147,11 +147,26 @@ function DocViewer({ bucket, docs, onClose }) {
   );
 }
 
+// ── Shared filter pill bar ─────────────────────────────────────────────────────
+function FilterBar({ filters, active, counts, onChange }) {
+  return (
+    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '16px' }}>
+      {filters.map(f => (
+        <button key={f.value} onClick={() => onChange(f.value)}
+          style={{ background: active === f.value ? T.black : T.white, color: active === f.value ? T.white : T.gray600, border: `1px solid ${active === f.value ? T.black : T.gray200}`, padding: '5px 12px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', fontFamily: F }}>
+          {f.label} ({counts[f.value] ?? 0})
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ── KYC Review Tab ─────────────────────────────────────────────────────────────
 function KycReview({ isMobile }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
+  const [filter, setFilter] = useState('pending');
   const [acting, setActing] = useState({});
   const [rejectReason, setRejectReason] = useState({});
   const [showReject, setShowReject] = useState({});
@@ -164,7 +179,6 @@ function KycReview({ isMobile }) {
     const { data, error } = await sb
       .from('profiles')
       .select('id, full_name, email, company_name, kyc_status, vcs_score, created_at')
-      .in('kyc_status', ['submitted', 'rejected'])
       .order('created_at', { ascending: false });
     if (error) { setErr(error.message); setLoading(false); return; }
     setRows(data || []);
@@ -172,6 +186,24 @@ function KycReview({ isMobile }) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const KYC_FILTERS = [
+    { value: 'pending', label: 'Needs Review' },
+    { value: 'verified', label: 'Approved' },
+    { value: 'rejected', label: 'Rejected' },
+    { value: 'all', label: 'All' },
+  ];
+
+  const counts = {
+    pending:  rows.filter(u => u.kyc_status === 'submitted' || u.kyc_status === 'pending').length,
+    verified: rows.filter(u => u.kyc_status === 'verified').length,
+    rejected: rows.filter(u => u.kyc_status === 'rejected').length,
+    all:      rows.length,
+  };
+
+  const visible = filter === 'all' ? rows
+    : filter === 'pending' ? rows.filter(u => u.kyc_status === 'submitted' || u.kyc_status === 'pending')
+    : rows.filter(u => u.kyc_status === filter);
 
   const toggleExpand = async (userId) => {
     const nowOpen = !expanded[userId];
@@ -189,7 +221,8 @@ function KycReview({ isMobile }) {
     const updates = action === 'approve' ? { kyc_status: 'verified' } : { kyc_status: 'rejected' };
     const { error } = await sb.from('profiles').update(updates).eq('id', userId);
     if (error) { setErr(error.message); setActing(a => ({ ...a, [userId]: null })); return; }
-    setRows(r => r.filter(u => u.id !== userId));
+    // Update row in place instead of removing it
+    setRows(r => r.map(u => u.id === userId ? { ...u, kyc_status: updates.kyc_status } : u));
     setActing(a => ({ ...a, [userId]: null }));
   };
 
@@ -198,57 +231,63 @@ function KycReview({ isMobile }) {
   return (
     <div>
       <ErrBanner msg={err} />
-      {rows.length === 0 && (
+      <FilterBar filters={KYC_FILTERS} active={filter} counts={counts} onChange={setFilter} />
+      {visible.length === 0 && (
         <div style={{ textAlign: 'center', padding: '48px', color: T.gray400 }}>
           <div style={{ fontSize: '32px', marginBottom: '12px' }}>✓</div>
-          <div style={{ fontSize: '14px', fontWeight: 700 }}>No pending KYC submissions</div>
+          <div style={{ fontSize: '14px', fontWeight: 700 }}>No {filter === 'all' ? '' : filter} KYC submissions</div>
         </div>
       )}
-      {rows.map(u => (
-        <div key={u.id} style={{ border: `1px solid ${T.gray100}`, background: T.white, marginBottom: '10px', padding: '16px 18px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => toggleExpand(u.id)}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                <span style={{ fontSize: '13px', fontWeight: 800, color: T.black }}>{u.full_name || '—'}</span>
-                <Badge status={u.kyc_status} />
-                <VcsPill score={u.vcs_score || 500} />
+      {visible.map(u => {
+        const canAct = u.kyc_status === 'submitted' || u.kyc_status === 'pending';
+        return (
+          <div key={u.id} style={{ border: `1px solid ${u.kyc_status === 'verified' ? T.green + '40' : u.kyc_status === 'rejected' ? T.red + '30' : T.gray100}`, background: T.white, marginBottom: '10px', padding: '16px 18px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => toggleExpand(u.id)}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: T.black }}>{u.full_name || '—'}</span>
+                  <Badge status={u.kyc_status} />
+                  <VcsPill score={u.vcs_score || 500} />
+                </div>
+                <div style={{ fontSize: '11px', color: T.gray400 }}>{u.email || '—'} · {u.company_name || 'No company'}</div>
+                <div style={{ fontSize: '10px', color: T.blue, marginTop: '4px', fontWeight: 600 }}>
+                  {expanded[u.id] ? '▲ Hide documents' : '▼ View documents & details'}
+                </div>
               </div>
-              <div style={{ fontSize: '11px', color: T.gray400 }}>{u.email} · {u.company_name || 'No company'}</div>
-              <div style={{ fontSize: '10px', color: T.blue, marginTop: '4px', fontWeight: 600 }}>
-                {expanded[u.id] ? '▲ Hide documents' : '▼ View documents & details'}
+              {canAct && (
+                <div style={{ display: 'flex', gap: '7px', flexShrink: 0 }}>
+                  <button onClick={() => setShowReject(s => ({ ...s, [u.id]: !s[u.id] }))}
+                    style={{ background: T.white, color: T.red, border: `1px solid ${T.red}`, padding: '7px 14px', fontSize: '11px', fontWeight: 800, cursor: 'pointer', fontFamily: F, minHeight: '36px' }}>
+                    Reject
+                  </button>
+                  <button onClick={() => act(u.id, 'approve')}
+                    disabled={!!acting[u.id]}
+                    style={{ background: T.green, color: T.white, border: 'none', padding: '7px 14px', fontSize: '11px', fontWeight: 800, cursor: 'pointer', fontFamily: F, minHeight: '36px', opacity: acting[u.id] ? 0.6 : 1 }}>
+                    {acting[u.id] === 'approve' ? 'Approving…' : 'Approve ✓'}
+                  </button>
+                </div>
+              )}
+            </div>
+            {showReject[u.id] && (
+              <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${T.gray100}` }}>
+                <input value={rejectReason[u.id] || ''} onChange={e => setRejectReason(r => ({ ...r, [u.id]: e.target.value }))}
+                  placeholder="Rejection reason (required)"
+                  style={{ width: '100%', border: `1px solid ${T.red}`, padding: '9px 12px', fontFamily: F, fontSize: '12px', marginBottom: '8px', outline: 'none', boxSizing: 'border-box' }} />
+                <button onClick={() => { if (!rejectReason[u.id]?.trim()) return; act(u.id, 'reject'); setShowReject(s => ({ ...s, [u.id]: false })); }}
+                  disabled={!rejectReason[u.id]?.trim() || !!acting[u.id]}
+                  style={{ background: rejectReason[u.id]?.trim() ? T.red : T.gray200, color: rejectReason[u.id]?.trim() ? T.white : T.gray400, border: 'none', padding: '8px 16px', fontSize: '11px', fontWeight: 800, cursor: rejectReason[u.id]?.trim() ? 'pointer' : 'not-allowed', fontFamily: F }}>
+                  {acting[u.id] === 'reject' ? 'Rejecting…' : 'Confirm Rejection'}
+                </button>
               </div>
-            </div>
-            <div style={{ display: 'flex', gap: '7px', flexShrink: 0 }}>
-              <button onClick={() => setShowReject(s => ({ ...s, [u.id]: !s[u.id] }))}
-                style={{ background: T.white, color: T.red, border: `1px solid ${T.red}`, padding: '7px 14px', fontSize: '11px', fontWeight: 800, cursor: 'pointer', fontFamily: F, minHeight: '36px' }}>
-                Reject
-              </button>
-              <button onClick={() => act(u.id, 'approve')}
-                disabled={!!acting[u.id]}
-                style={{ background: T.green, color: T.white, border: 'none', padding: '7px 14px', fontSize: '11px', fontWeight: 800, cursor: 'pointer', fontFamily: F, minHeight: '36px', opacity: acting[u.id] ? 0.6 : 1 }}>
-                {acting[u.id] === 'approve' ? 'Approving…' : 'Approve ✓'}
-              </button>
-            </div>
+            )}
+            {expanded[u.id] && (
+              loadingDocs[u.id]
+                ? <div style={{ padding: '12px', fontSize: '12px', color: T.gray400 }}>Loading documents…</div>
+                : <DocViewer bucket="kyc-documents" docs={docs[u.id] || []} onClose={() => setExpanded(e => ({ ...e, [u.id]: false }))} />
+            )}
           </div>
-          {showReject[u.id] && (
-            <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${T.gray100}` }}>
-              <input value={rejectReason[u.id] || ''} onChange={e => setRejectReason(r => ({ ...r, [u.id]: e.target.value }))}
-                placeholder="Rejection reason (required)"
-                style={{ width: '100%', border: `1px solid ${T.red}`, padding: '9px 12px', fontFamily: F, fontSize: '12px', marginBottom: '8px', outline: 'none', boxSizing: 'border-box' }} />
-              <button onClick={() => { if (!rejectReason[u.id]?.trim()) return; act(u.id, 'reject'); setShowReject(s => ({ ...s, [u.id]: false })); }}
-                disabled={!rejectReason[u.id]?.trim() || !!acting[u.id]}
-                style={{ background: rejectReason[u.id]?.trim() ? T.red : T.gray200, color: rejectReason[u.id]?.trim() ? T.white : T.gray400, border: 'none', padding: '8px 16px', fontSize: '11px', fontWeight: 800, cursor: rejectReason[u.id]?.trim() ? 'pointer' : 'not-allowed', fontFamily: F }}>
-                {acting[u.id] === 'reject' ? 'Rejecting…' : 'Confirm Rejection'}
-              </button>
-            </div>
-          )}
-          {expanded[u.id] && (
-            loadingDocs[u.id]
-              ? <div style={{ padding: '12px', fontSize: '12px', color: T.gray400 }}>Loading documents…</div>
-              : <DocViewer bucket="kyc-documents" docs={docs[u.id] || []} onClose={() => setExpanded(e => ({ ...e, [u.id]: false }))} />
-          )}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -258,6 +297,7 @@ function KybReview({ isMobile }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
+  const [filter, setFilter] = useState('pending');
   const [acting, setActing] = useState({});
   const [showReject, setShowReject] = useState({});
   const [rejectReason, setRejectReason] = useState({});
@@ -270,13 +310,30 @@ function KybReview({ isMobile }) {
       const { data, error } = await sb
         .from('depots')
         .select('id, name, location, state, lga, address, capacity, license_number, kyb_status, contact_name, contact_phone, contact_email, contact_role, created_at, profiles!owner_id(full_name, email)')
-        .in('kyb_status', ['submitted', 'rejected'])
         .order('created_at', { ascending: false });
       if (error) { setErr(error.message); setLoading(false); return; }
       setRows(data || []);
       setLoading(false);
     })();
   }, []);
+
+  const KYB_FILTERS = [
+    { value: 'pending', label: 'Needs Review' },
+    { value: 'verified', label: 'Approved' },
+    { value: 'rejected', label: 'Rejected' },
+    { value: 'all', label: 'All' },
+  ];
+
+  const counts = {
+    pending:  rows.filter(d => d.kyb_status === 'submitted' || d.kyb_status === 'pending').length,
+    verified: rows.filter(d => d.kyb_status === 'verified').length,
+    rejected: rows.filter(d => d.kyb_status === 'rejected').length,
+    all:      rows.length,
+  };
+
+  const visible = filter === 'all' ? rows
+    : filter === 'pending' ? rows.filter(d => d.kyb_status === 'submitted' || d.kyb_status === 'pending')
+    : rows.filter(d => d.kyb_status === filter);
 
   const toggleExpand = async (depotId) => {
     const nowOpen = !expanded[depotId];
@@ -291,11 +348,11 @@ function KybReview({ isMobile }) {
 
   const act = async (depotId, action) => {
     setActing(a => ({ ...a, [depotId]: action }));
-    const { error } = await sb.from('depots')
-      .update({ kyb_status: action === 'approve' ? 'verified' : 'rejected' })
-      .eq('id', depotId);
+    const newStatus = action === 'approve' ? 'verified' : 'rejected';
+    const { error } = await sb.from('depots').update({ kyb_status: newStatus }).eq('id', depotId);
     if (error) { setErr(error.message); setActing(a => ({ ...a, [depotId]: null })); return; }
-    setRows(r => r.filter(d => d.id !== depotId));
+    setRows(r => r.map(d => d.id === depotId ? { ...d, kyb_status: newStatus } : d));
+    setActing(a => ({ ...a, [depotId]: null }));
   };
 
   if (loading) return <Spinner />;
@@ -303,85 +360,89 @@ function KybReview({ isMobile }) {
   return (
     <div>
       <ErrBanner msg={err} />
-      {rows.length === 0 && (
+      <FilterBar filters={KYB_FILTERS} active={filter} counts={counts} onChange={setFilter} />
+      {visible.length === 0 && (
         <div style={{ textAlign: 'center', padding: '48px', color: T.gray400 }}>
           <div style={{ fontSize: '32px', marginBottom: '12px' }}>✓</div>
-          <div style={{ fontSize: '14px', fontWeight: 700 }}>No pending KYB submissions</div>
+          <div style={{ fontSize: '14px', fontWeight: 700 }}>No {filter === 'all' ? '' : filter} KYB submissions</div>
         </div>
       )}
-      {rows.map(d => (
-        <div key={d.id} style={{ border: `1px solid ${T.gray100}`, background: T.white, marginBottom: '10px', padding: '16px 18px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => toggleExpand(d.id)}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                <span style={{ fontSize: '13px', fontWeight: 800, color: T.black }}>{d.name}</span>
-                <Badge status={d.kyb_status} />
+      {visible.map(d => {
+        const canAct = d.kyb_status === 'submitted' || d.kyb_status === 'pending';
+        return (
+          <div key={d.id} style={{ border: `1px solid ${d.kyb_status === 'verified' ? T.green + '40' : d.kyb_status === 'rejected' ? T.red + '30' : T.gray100}`, background: T.white, marginBottom: '10px', padding: '16px 18px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => toggleExpand(d.id)}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: T.black }}>{d.name}</span>
+                  <Badge status={d.kyb_status} />
+                </div>
+                <div style={{ fontSize: '11px', color: T.gray400 }}>{d.location}{d.license_number ? ` · ${d.license_number}` : ''}</div>
+                <div style={{ fontSize: '11px', color: T.gray400, marginTop: '2px' }}>
+                  Owner: {d.profiles?.full_name || '—'} · {d.profiles?.email || '—'}
+                </div>
+                <div style={{ fontSize: '10px', color: T.blue, marginTop: '4px', fontWeight: 600 }}>
+                  {expanded[d.id] ? '▲ Hide details' : '▼ View KYB info & documents'}
+                </div>
               </div>
-              <div style={{ fontSize: '11px', color: T.gray400 }}>{d.location}{d.license_number ? ` · ${d.license_number}` : ''}</div>
-              <div style={{ fontSize: '11px', color: T.gray400, marginTop: '2px' }}>
-                Owner: {d.profiles?.full_name || '—'} · {d.profiles?.email || '—'}
-              </div>
-              <div style={{ fontSize: '10px', color: T.blue, marginTop: '4px', fontWeight: 600 }}>
-                {expanded[d.id] ? '▲ Hide details' : '▼ View KYB info & documents'}
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: '7px', flexShrink: 0 }}>
-              <button onClick={() => setShowReject(s => ({ ...s, [d.id]: !s[d.id] }))}
-                style={{ background: T.white, color: T.red, border: `1px solid ${T.red}`, padding: '7px 14px', fontSize: '11px', fontWeight: 800, cursor: 'pointer', fontFamily: F }}>
-                Reject
-              </button>
-              <button onClick={() => act(d.id, 'approve')}
-                disabled={!!acting[d.id]}
-                style={{ background: T.green, color: T.white, border: 'none', padding: '7px 14px', fontSize: '11px', fontWeight: 800, cursor: 'pointer', fontFamily: F, opacity: acting[d.id] ? 0.6 : 1 }}>
-                {acting[d.id] === 'approve' ? 'Approving…' : 'Approve ✓'}
-              </button>
-            </div>
-          </div>
-          {showReject[d.id] && (
-            <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${T.gray100}` }}>
-              <input value={rejectReason[d.id] || ''} onChange={e => setRejectReason(r => ({ ...r, [d.id]: e.target.value }))}
-                placeholder="Rejection reason"
-                style={{ width: '100%', border: `1px solid ${T.red}`, padding: '9px 12px', fontFamily: F, fontSize: '12px', marginBottom: '8px', outline: 'none', boxSizing: 'border-box' }} />
-              <button onClick={() => act(d.id, 'reject')} disabled={!rejectReason[d.id]?.trim()}
-                style={{ background: rejectReason[d.id]?.trim() ? T.red : T.gray200, color: rejectReason[d.id]?.trim() ? T.white : T.gray400, border: 'none', padding: '8px 16px', fontSize: '11px', fontWeight: 800, cursor: rejectReason[d.id]?.trim() ? 'pointer' : 'not-allowed', fontFamily: F }}>
-                Confirm Rejection
-              </button>
-            </div>
-          )}
-          {expanded[d.id] && (
-            <div style={{ marginTop: '12px', borderTop: `1px solid ${T.gray100}`, paddingTop: '12px' }}>
-              {/* Depot info grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
-                {[
-                  ['State', d.state],
-                  ['LGA', d.lga],
-                  ['Capacity', d.capacity ? `${Number(d.capacity).toLocaleString()} L` : '—'],
-                  ['License #', d.license_number || '—'],
-                  ['Address', d.address || '—'],
-                ].map(([label, val]) => (
-                  <div key={label} style={{ background: T.gray50, padding: '8px 10px', border: `1px solid ${T.gray100}` }}>
-                    <div style={{ fontSize: '9px', fontWeight: 700, color: T.gray400, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
-                    <div style={{ fontSize: '12px', fontWeight: 600, color: T.black, marginTop: '2px' }}>{val || '—'}</div>
-                  </div>
-                ))}
-              </div>
-              {/* Operations contact */}
-              {(d.contact_name || d.contact_phone || d.contact_email) && (
-                <div style={{ background: T.blueLight, border: `1px solid ${T.blue}20`, padding: '10px 12px', marginBottom: '12px' }}>
-                  <div style={{ fontSize: '10px', fontWeight: 800, color: T.blue, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Operations Contact</div>
-                  <div style={{ fontSize: '12px', color: T.black, fontWeight: 600 }}>{d.contact_name}{d.contact_role ? ` · ${d.contact_role}` : ''}</div>
-                  <div style={{ fontSize: '11px', color: T.gray600, marginTop: '2px' }}>{d.contact_phone} {d.contact_email ? `· ${d.contact_email}` : ''}</div>
+              {canAct && (
+                <div style={{ display: 'flex', gap: '7px', flexShrink: 0 }}>
+                  <button onClick={() => setShowReject(s => ({ ...s, [d.id]: !s[d.id] }))}
+                    style={{ background: T.white, color: T.red, border: `1px solid ${T.red}`, padding: '7px 14px', fontSize: '11px', fontWeight: 800, cursor: 'pointer', fontFamily: F }}>
+                    Reject
+                  </button>
+                  <button onClick={() => act(d.id, 'approve')}
+                    disabled={!!acting[d.id]}
+                    style={{ background: T.green, color: T.white, border: 'none', padding: '7px 14px', fontSize: '11px', fontWeight: 800, cursor: 'pointer', fontFamily: F, opacity: acting[d.id] ? 0.6 : 1 }}>
+                    {acting[d.id] === 'approve' ? 'Approving…' : 'Approve ✓'}
+                  </button>
                 </div>
               )}
-              {/* Documents */}
-              {loadingDocs[d.id]
-                ? <div style={{ fontSize: '12px', color: T.gray400 }}>Loading documents…</div>
-                : <DocViewer bucket="kyb-documents" docs={docs[d.id] || []} onClose={() => setExpanded(e => ({ ...e, [d.id]: false }))} />
-              }
             </div>
-          )}
-        </div>
-      ))}
+            {showReject[d.id] && (
+              <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${T.gray100}` }}>
+                <input value={rejectReason[d.id] || ''} onChange={e => setRejectReason(r => ({ ...r, [d.id]: e.target.value }))}
+                  placeholder="Rejection reason"
+                  style={{ width: '100%', border: `1px solid ${T.red}`, padding: '9px 12px', fontFamily: F, fontSize: '12px', marginBottom: '8px', outline: 'none', boxSizing: 'border-box' }} />
+                <button onClick={() => { if (!rejectReason[d.id]?.trim()) return; act(d.id, 'reject'); setShowReject(s => ({ ...s, [d.id]: false })); }}
+                  disabled={!rejectReason[d.id]?.trim()}
+                  style={{ background: rejectReason[d.id]?.trim() ? T.red : T.gray200, color: rejectReason[d.id]?.trim() ? T.white : T.gray400, border: 'none', padding: '8px 16px', fontSize: '11px', fontWeight: 800, cursor: rejectReason[d.id]?.trim() ? 'pointer' : 'not-allowed', fontFamily: F }}>
+                  Confirm Rejection
+                </button>
+              </div>
+            )}
+            {expanded[d.id] && (
+              <div style={{ marginTop: '12px', borderTop: `1px solid ${T.gray100}`, paddingTop: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
+                  {[
+                    ['State', d.state],
+                    ['LGA', d.lga],
+                    ['Capacity', d.capacity ? `${Number(d.capacity).toLocaleString()} L` : '—'],
+                    ['License #', d.license_number || '—'],
+                    ['Address', d.address || '—'],
+                  ].map(([label, val]) => (
+                    <div key={label} style={{ background: T.gray50, padding: '8px 10px', border: `1px solid ${T.gray100}` }}>
+                      <div style={{ fontSize: '9px', fontWeight: 700, color: T.gray400, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
+                      <div style={{ fontSize: '12px', fontWeight: 600, color: T.black, marginTop: '2px' }}>{val || '—'}</div>
+                    </div>
+                  ))}
+                </div>
+                {(d.contact_name || d.contact_phone || d.contact_email) && (
+                  <div style={{ background: T.blueLight, border: `1px solid ${T.blue}20`, padding: '10px 12px', marginBottom: '12px' }}>
+                    <div style={{ fontSize: '10px', fontWeight: 800, color: T.blue, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Operations Contact</div>
+                    <div style={{ fontSize: '12px', color: T.black, fontWeight: 600 }}>{d.contact_name}{d.contact_role ? ` · ${d.contact_role}` : ''}</div>
+                    <div style={{ fontSize: '11px', color: T.gray600, marginTop: '2px' }}>{d.contact_phone}{d.contact_email ? ` · ${d.contact_email}` : ''}</div>
+                  </div>
+                )}
+                {loadingDocs[d.id]
+                  ? <div style={{ fontSize: '12px', color: T.gray400 }}>Loading documents…</div>
+                  : <DocViewer bucket="kyb-documents" docs={docs[d.id] || []} onClose={() => setExpanded(e => ({ ...e, [d.id]: false }))} />
+                }
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
