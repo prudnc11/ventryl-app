@@ -54,6 +54,7 @@ function slaLeft(iso) {
 function adaptOrder(row) {
   const items = row.order_items || [];
   const product = items.map(i => i.product).join(' + ') || '—';
+  const neg = row.delivery_negotiations?.[0];
   return {
     id: row.id,
     buyer: row.profiles?.company_name || row.profiles?.full_name || '',
@@ -65,6 +66,7 @@ function adaptOrder(row) {
     placed: fmtDate(row.placed_at) || '',
     trucks: row.trucks_count || 0,
     progress: statusToProgress(row.status),
+    pendingQuote: neg?.status === 'buyer_pending',
     _raw: row,
   };
 }
@@ -194,7 +196,7 @@ function adaptOrderDetail(row) {
         id: `T${i + 1}`,
         _dbId: t.id,           // real UUID from order_trucks — used for per-truck DB updates
         driver: t.driver_name || 'TBD',
-        plate: t.plate || 'TBD',
+        plate: t.plate_number || 'TBD',
         vol: t.volume || Math.ceil(row.total_volume / (row.trucks_count || 1)),
         departure: t.departure_time || 'TBD',
         eta: t.eta || 'TBD',

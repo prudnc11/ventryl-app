@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
 import { useAuthStore } from './store/authStore';
 import { useVentrylStore } from './store/ventrylStore';
@@ -4024,12 +4024,6 @@ function DisputeModal({onClose,orderId,product,vol}) {
 function BuyerOrderDetail({orderId,onBack,isMobile}) {
   const {buyerOrders,orderDetails,loadOrderDetail,invalidateOrderDetail,loadBuyerOrders}=useVentrylStore();
   const {user:authUser}=useAuthStore();
-  // Always load fresh detail from DB on mount (invalidate stale cache)
-  useEffect(()=>{
-    invalidateOrderDetail(orderId);
-    loadOrderDetail(orderId);
-    if(authUser?.id) loadBuyerOrders(authUser.id);
-  },[orderId]);
   const order=buyerOrders.find(o=>o.id===orderId);
   const meta=orderDetails[orderId]||{};
 
@@ -4047,11 +4041,33 @@ function BuyerOrderDetail({orderId,onBack,isMobile}) {
   const [counterInput,setCounterInput]=useState("");
   const [showCounterForm,setShowCounterForm]=useState(false);
 
+  // Direct negotiation fetch — bypasses order detail join (handles RLS / empty join edge cases)
+  const loadNeg=useCallback(async()=>{
+    try{
+      const neg=await negotiationsApi.get(orderId);
+      if(neg){
+        if(neg.status) setQuoteStatus(neg.status);
+        const rounds=(neg.delivery_rounds||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(r=>({
+          from:r.from_party,amount:r.amount,time:new Date(r.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
+        }));
+        if(rounds.length>0) setQuoteRounds(rounds);
+      }
+    }catch(e){console.error("[BuyerOrderDetail] loadNeg",e);}
+  },[orderId]);
+
+  // Always load fresh detail from DB on mount (invalidate stale cache)
+  useEffect(()=>{
+    invalidateOrderDetail(orderId);
+    loadOrderDetail(orderId);
+    if(authUser?.id) loadBuyerOrders(authUser.id);
+    loadNeg();
+  },[orderId]);
+
   // Sync liveStatus + negotiation from loaded data (covers page-load and post-reload cases)
   useEffect(()=>{
-    const s=meta?.status||storeOrder?.status;
+    const s=meta?.status||order?.status;
     if(s) setLiveStatus(s);
-  },[meta?.status,storeOrder?.status]);
+  },[meta?.status,order?.status]);
 
   useEffect(()=>{
     const neg=meta?._negotiation;
@@ -4070,6 +4086,7 @@ function BuyerOrderDetail({orderId,onBack,isMobile}) {
     invalidateOrderDetail(orderId);
     loadOrderDetail(orderId);
     if(authUser?.id) loadBuyerOrders(authUser.id);
+    loadNeg();
   };
 
   // ── Realtime: update live state when Supabase pushes changes ──────
@@ -4092,9 +4109,10 @@ function BuyerOrderDetail({orderId,onBack,isMobile}) {
       reloadOrderDetail.current?.();
     }
     if(table==="delivery_negotiations"&&n){
-      if(n.status) setQuoteStatus(n.status);
-      // Reload to get full rounds data
+      // Direct fetch to get full rounds + amount (realtime payload has no amount)
+      loadNeg();
       reloadOrderDetail.current?.();
+      if(authUser?.id) loadBuyerOrders(authUser.id);
     }
   });
 
@@ -4932,11 +4950,26 @@ function BuyerOrderDetail({orderId,onBack,isMobile}) {
 function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
   const {user:authUser}=useAuthStore();
   const {depotOrders,orderDetails,loadOrderDetail,invalidateOrderDetail,loadDepotOrders}=useVentrylStore();
-  useEffect(()=>{invalidateOrderDetail(orderId);loadOrderDetail(orderId);},[orderId]);
   const allDepotOrders=Object.values(depotOrders).flat();
   const dbRaw=allDepotOrders.find(o=>o.id===orderId);
   const raw=dbRaw;
   const meta=orderDetails[orderId]||{};
+
+  // Local negotiation state — populated by direct fetch (bypasses join / RLS issues)
+  const [localNeg,setLocalNeg]=useState(null);
+
+  const loadNeg=useCallback(async()=>{
+    try{
+      const neg=await negotiationsApi.get(orderId);
+      if(neg) setLocalNeg(neg);
+    }catch(e){console.error("[DepotOrderDetail] loadNeg",e);}
+  },[orderId]);
+
+  useEffect(()=>{
+    invalidateOrderDetail(orderId);
+    loadOrderDetail(orderId);
+    loadNeg();
+  },[orderId]);
 
   // Realtime: reload when buyer files dispute, confirms receipt, or negotiation changes
   useOrderRealtime(orderId,(payload)=>{
@@ -4945,6 +4978,7 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
       invalidateOrderDetail(orderId);
       loadOrderDetail(orderId);
       if(depot?.id) loadDepotOrders(depot.id);
+      loadNeg();
     }
   });
 
@@ -4954,13 +4988,15 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
   const liveTrucks=(meta.trucks_detail||[]).map(t=>({...t}));
   const liveTimeline=meta.timeline||[];
 
-  // Derive negotiation state from DB
-  const neg=meta._negotiation||null;
-  const liveQuoteRounds=(neg?.delivery_rounds||[]).map(r=>({
-    from:r.from_party,
-    amount:r.amount,
-    time:r.created_at?new Date(r.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"",
-  }));
+  // Derive negotiation state — prefer direct fetch over join result
+  const neg=localNeg||meta._negotiation||null;
+  const liveQuoteRounds=(neg?.delivery_rounds||[])
+    .sort((a,b)=>new Date(a.created_at)-new Date(b.created_at))
+    .map(r=>({
+      from:r.from_party,
+      amount:r.amount,
+      time:r.created_at?new Date(r.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"",
+    }));
   const liveQuoteStatus=neg?.status||"none";
 
   // Local UI-only state (not persisted, just for the current screen session)
@@ -5006,6 +5042,7 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
     invalidateOrderDetail(orderId);
     loadOrderDetail(orderId);
     if(depot?.id) loadDepotOrders(depot.id);
+    loadNeg();
   };
 
   const sendDeliveryQuote=async(amount)=>{
@@ -5063,7 +5100,7 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
         await ordersApi.assignBay(orderId,newBay,loadRef,authUser?.id);
       } else if(toStatus==="in_transit"&&trucks?.length){
         await ordersApi.dispatch(orderId,trucks.map(t=>({
-          driver_name:t.driver,plate:t.plate,volume:parseInt(t.vol),eta:t.eta||null,
+          driver_name:t.driver,plate_number:t.plate,volume:parseInt(t.vol),eta:t.eta||null,
         })),authUser?.id);
       } else {
         await ordersApi.updateStatus(orderId,toStatus,{actorId:authUser?.id,note});
@@ -5953,9 +5990,10 @@ function UnifiedDash({depots,onOrder,onDepotClick,onNewDepot,onViewOrder,isMobil
                   <div style={{fontSize:"12px",fontWeight:800,color:T.black}}>{o.id}</div>
                   <div style={{fontSize:"11px",color:T.gray400,marginTop:"2px"}}>{o.depot} · {o.product} · {(o.vol/1000).toFixed(0)}k L</div>
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap",justifyContent:"flex-end"}}>
                   <span style={{fontSize:"12px",fontWeight:800,color:T.black}}>₦{(o.value||0).toLocaleString('en-NG')}</span>
                   <Badge status={o.status}/>
+                  {o.pendingQuote&&<span style={{background:T.amber,color:"#000",fontSize:"9px",fontWeight:800,padding:"2px 6px",letterSpacing:"0.04em"}}>💰 QUOTE</span>}
                 </div>
               </div>
             ))}
@@ -6213,11 +6251,14 @@ function VentrylPlatform({bp, user, onSignOut}) {
       <div style={{fontSize:"14px",fontWeight:800,color:T.black,marginBottom:"14px"}}>My Orders</div>
       {isMobile?(
         ALL_BUYER_ORDERS.map((o,i)=>(
-          <div key={o.id} onClick={()=>navigate(`order:${o.id}`)} style={{border:`1px solid ${T.gray100}`,background:T.white,padding:"14px 16px",marginBottom:"8px",cursor:"pointer"}}
-            onMouseEnter={e=>e.currentTarget.style.borderColor=T.black} onMouseLeave={e=>e.currentTarget.style.borderColor=T.gray100}>
+          <div key={o.id} onClick={()=>navigate(`order:${o.id}`)} style={{border:`1px solid ${o.pendingQuote?T.amber:T.gray100}`,background:T.white,padding:"14px 16px",marginBottom:"8px",cursor:"pointer"}}
+            onMouseEnter={e=>e.currentTarget.style.borderColor=T.black} onMouseLeave={e=>e.currentTarget.style.borderColor=o.pendingQuote?T.amber:T.gray100}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"7px"}}>
               <div><div style={{fontSize:"12px",fontWeight:800,color:T.black}}>{o.id}</div><div style={{fontSize:"11px",color:T.gray400,marginTop:"1px"}}>{o.depot} · {o.product}</div></div>
-              <Badge status={o.status}/>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:"4px"}}>
+                <Badge status={o.status}/>
+                {o.pendingQuote&&<span style={{background:T.amber,color:"#000",fontSize:"9px",fontWeight:800,padding:"2px 6px",letterSpacing:"0.04em"}}>QUOTE PENDING</span>}
+              </div>
             </div>
             <div style={{display:"flex",gap:"14px"}}>
               <span style={{fontSize:"11px",color:T.gray600,fontWeight:700}}>{(o.vol/1000).toFixed(0)}k L</span>
@@ -6231,7 +6272,7 @@ function VentrylPlatform({bp, user, onSignOut}) {
           <table style={{width:"100%",borderCollapse:"collapse"}}>
             <thead><tr style={{borderBottom:`1px solid ${T.gray100}`}}>{["Order","Depot","Product","Volume","Trucks","Value","Placed","Status"].map(h=><th key={h} style={{padding:"10px 18px",fontFamily:F,fontSize:"10px",fontWeight:700,color:T.gray400,textAlign:"left",textTransform:"uppercase",letterSpacing:"0.06em"}}>{h}</th>)}</tr></thead>
             <tbody>{ALL_BUYER_ORDERS.map((o,i)=>(
-              <tr key={o.id} onClick={()=>navigate(`order:${o.id}`)} style={{borderBottom:i<ALL_BUYER_ORDERS.length-1?`1px solid ${T.gray100}`:"none",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background="#F6F6F6"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+              <tr key={o.id} onClick={()=>navigate(`order:${o.id}`)} style={{borderBottom:i<ALL_BUYER_ORDERS.length-1?`1px solid ${T.gray100}`:"none",cursor:"pointer",background:o.pendingQuote?"#FFFBF0":"transparent"}} onMouseEnter={e=>e.currentTarget.style.background="#F6F6F6"} onMouseLeave={e=>e.currentTarget.style.background=o.pendingQuote?"#FFFBF0":"transparent"}>
                 <td style={{padding:"13px 18px",fontFamily:F,fontSize:"12px",fontWeight:800,color:T.black}}>{o.id}</td>
                 <td style={{padding:"13px 18px",fontFamily:F,fontSize:"12px",color:T.gray800}}>{o.depot}</td>
                 <td style={{padding:"13px 18px"}}><span style={{background:T.gray100,color:T.black,fontSize:"10px",fontWeight:800,padding:"3px 7px"}}>{o.product}</span></td>
@@ -6239,7 +6280,12 @@ function VentrylPlatform({bp, user, onSignOut}) {
                 <td style={{padding:"13px 18px",fontFamily:F,fontSize:"12px",fontWeight:700,color:T.black,textAlign:"center"}}>{o.trucks}</td>
                 <td style={{padding:"13px 18px",fontFamily:F,fontSize:"13px",fontWeight:800,color:T.black}}>₦{(o.value||0).toLocaleString('en-NG')}</td>
                 <td style={{padding:"13px 18px",fontFamily:F,fontSize:"11px",color:T.gray400}}>{o.placed}</td>
-                <td style={{padding:"13px 18px"}}><Badge status={o.status}/></td>
+                <td style={{padding:"13px 18px"}}>
+                  <div style={{display:"flex",flexDirection:"column",gap:"4px",alignItems:"flex-start"}}>
+                    <Badge status={o.status}/>
+                    {o.pendingQuote&&<span style={{background:T.amber,color:"#000",fontSize:"9px",fontWeight:800,padding:"2px 6px",letterSpacing:"0.04em",whiteSpace:"nowrap"}}>💰 QUOTE PENDING</span>}
+                  </div>
+                </td>
               </tr>
             ))}</tbody>
           </table>

@@ -295,7 +295,8 @@ export const orders = {
         *,
         order_items (*),
         depots (name, location),
-        profiles!orders_buyer_id_fkey (full_name, company_name)
+        profiles!orders_buyer_id_fkey (full_name, company_name),
+        delivery_negotiations (status)
       `)
       .eq('buyer_id', buyerId)
       .order('placed_at', { ascending: false });
