@@ -236,10 +236,9 @@ export const orders = {
     const netToDepot = totalValue - platformFee;
     const trucksCount = Math.ceil(totalVolume / 33000);
 
-    // Generate order ID from DB sequence
-    const { data: idRow, error: idErr } = await supabase.rpc('next_order_id');
-    assertOk(idErr, 'orders.create:id');
-    const orderId = idRow;
+    // Generate order ID from DB sequence; fall back to timestamp-based ID if not available
+    const { data: idRow } = await supabase.rpc('next_order_id');
+    const orderId = idRow || `VTL-${Date.now().toString(36).toUpperCase().slice(-5)}`;
 
     const slaDeadline = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(); // 2h SLA
 
@@ -362,13 +361,11 @@ export const orders = {
       .eq('id', orderId);
     assertOk(upErr, 'orders.updateStatus:order');
 
-    await supabase.from('order_status_logs').insert({
-      order_id: orderId,
-      from_status: current?.status ?? null,
-      to_status: toStatus,
-      note: note || null,
-      actor_id: actorId || null,
-    });
+    const logRow = { order_id: orderId, to_status: toStatus };
+    if (current?.status) logRow.from_status = current.status;
+    if (note) logRow.note = note;
+    if (actorId) logRow.actor_id = actorId;
+    await supabase.from('order_status_logs').insert(logRow);
 
     // Release escrow on delivery
     if (toStatus === 'delivered' || toStatus === 'collected') {
@@ -585,7 +582,7 @@ export const wallet = {
 const VALID_TRANSITIONS = {
   pending:    ['confirmed', 'rejected', 'cancelled'],
   confirmed:  ['loading', 'cancelled'],
-  loading:    ['in_transit'],
+  loading:    ['in_transit', 'collected'],
   in_transit: ['delivered', 'collected', 'disputed'],
   delivered:  ['disputed'],
   collected:  [],
@@ -808,5 +805,83 @@ export const notifications = {
       return null;
     }
     return fnData;
+  },
+};
+
+// ── Team Members ──────────────────────────────────────────────────────────────
+
+export const teamMembers = {
+  /** List all members (active, inactive, pending) for a depot */
+  async list(depotId) {
+    const { data, error } = await supabase
+      .from('depot_members')
+      .select('*')
+      .eq('depot_id', depotId)
+      .order('created_at', { ascending: true });
+    assertOk(error, 'teamMembers.list');
+    return data || [];
+  },
+
+  /** Invite a new member (creates a pending row, then sends invite email) */
+  async invite({ depotId, email, name, role, invitedBy, depotName }) {
+    const { data, error } = await supabase
+      .from('depot_members')
+      .upsert(
+        { depot_id: depotId, email, name: name || '', role, status: 'pending', invited_by: invitedBy },
+        { onConflict: 'depot_id,email' }
+      )
+      .select()
+      .single();
+    assertOk(error, 'teamMembers.invite');
+
+    // Send invite email (fire-and-forget — never block or throw)
+    try {
+      notifications.send({
+        userId: invitedBy,
+        type: 'team_invite',
+        channel: 'email',
+        toEmail: email,
+        data: { name: name || '', depotName: depotName || 'a depot', depotId, email, role },
+      }).catch(() => {});
+    } catch (_) { /* edge function not deployed — invite still succeeds */ }
+
+    return data;
+  },
+
+  /** Update a member's role */
+  async updateRole(memberId, role) {
+    const { error } = await supabase
+      .from('depot_members')
+      .update({ role })
+      .eq('id', memberId);
+    assertOk(error, 'teamMembers.updateRole');
+  },
+
+  /** Toggle active/inactive status */
+  async setStatus(memberId, status) {
+    const { error } = await supabase
+      .from('depot_members')
+      .update({ status })
+      .eq('id', memberId);
+    assertOk(error, 'teamMembers.setStatus');
+  },
+
+  /** Remove a member entirely */
+  async remove(memberId) {
+    const { error } = await supabase
+      .from('depot_members')
+      .delete()
+      .eq('id', memberId);
+    assertOk(error, 'teamMembers.remove');
+  },
+
+  /** Revoke a pending invite */
+  async revokeInvite(memberId) {
+    const { error } = await supabase
+      .from('depot_members')
+      .delete()
+      .eq('id', memberId)
+      .eq('status', 'pending');
+    assertOk(error, 'teamMembers.revokeInvite');
   },
 };

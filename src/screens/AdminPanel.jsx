@@ -74,11 +74,12 @@ function ErrBanner({ msg }) {
 
 // ── VCS Score pill ─────────────────────────────────────────────────────────────
 function VcsPill({ score }) {
+  const tier  = score >= 750 ? 'Platinum' : score >= 600 ? 'Gold' : score >= 450 ? 'Silver' : score >= 300 ? 'Bronze' : 'Standard';
   const color = score >= 750 ? T.greenDark : score >= 600 ? T.blue : score >= 450 ? '#92400e' : T.red;
   const bg    = score >= 750 ? T.greenLight : score >= 600 ? T.blueLight : score >= 450 ? T.amberLight : T.redLight;
   return (
     <span style={{ background: bg, color, fontSize: '10px', fontWeight: 800, padding: '2px 8px' }}>
-      VCS {score}
+      VCS {score} · {tier}
     </span>
   );
 }
@@ -219,9 +220,11 @@ function KycReview({ isMobile }) {
   const act = async (userId, action) => {
     setActing(a => ({ ...a, [userId]: action }));
     const updates = action === 'approve' ? { kyc_status: 'verified' } : { kyc_status: 'rejected' };
+    if (action === 'reject' && rejectReason[userId]?.trim()) {
+      updates.kyc_rejection_reason = rejectReason[userId].trim();
+    }
     const { error } = await sb.from('profiles').update(updates).eq('id', userId);
     if (error) { setErr(error.message); setActing(a => ({ ...a, [userId]: null })); return; }
-    // Update row in place instead of removing it
     setRows(r => r.map(u => u.id === userId ? { ...u, kyc_status: updates.kyc_status } : u));
     setActing(a => ({ ...a, [userId]: null }));
   };
@@ -349,7 +352,11 @@ function KybReview({ isMobile }) {
   const act = async (depotId, action) => {
     setActing(a => ({ ...a, [depotId]: action }));
     const newStatus = action === 'approve' ? 'verified' : 'rejected';
-    const { error } = await sb.from('depots').update({ kyb_status: newStatus }).eq('id', depotId);
+    const updates = { kyb_status: newStatus };
+    if (action === 'reject' && rejectReason[depotId]?.trim()) {
+      updates.kyb_rejection_reason = rejectReason[depotId].trim();
+    }
+    const { error } = await sb.from('depots').update(updates).eq('id', depotId);
     if (error) { setErr(error.message); setActing(a => ({ ...a, [depotId]: null })); return; }
     setRows(r => r.map(d => d.id === depotId ? { ...d, kyb_status: newStatus } : d));
     setActing(a => ({ ...a, [depotId]: null }));
@@ -709,12 +716,13 @@ function Overview({ isMobile }) {
 
   useEffect(() => {
     (async () => {
-      const [usersRes, depotsRes, ordersRes, pendingKycRes, pendingKybRes] = await Promise.all([
+      const [usersRes, depotsRes, ordersRes, pendingKycRes, pendingKybRes, openDisputesRes] = await Promise.all([
         sb.from('profiles').select('id', { count: 'exact', head: true }),
         sb.from('depots').select('id', { count: 'exact', head: true }),
         sb.from('orders').select('id, total_value, status', { count: 'exact' }),
         sb.from('profiles').select('id', { count: 'exact', head: true }).eq('kyc_status', 'submitted'),
         sb.from('depots').select('id', { count: 'exact', head: true }).eq('kyb_status', 'submitted'),
+        sb.from('disputes').select('id', { count: 'exact', head: true }).eq('status', 'open'),
       ]);
       const orders = ordersRes.data || [];
       const completedOrders = orders.filter(o => ['delivered', 'collected'].includes(o.status));
@@ -727,6 +735,7 @@ function Overview({ isMobile }) {
         gmv: totalGmv,
         pendingKyc: pendingKycRes.count || 0,
         pendingKyb: pendingKybRes.count || 0,
+        openDisputes: openDisputesRes.count || 0,
       });
       setLoading(false);
     })();
@@ -744,7 +753,7 @@ function Overview({ isMobile }) {
         <KpiCard label="Total Orders" value={metrics.totalOrders.toLocaleString()} sub={`${metrics.completedOrders} completed`} />
         <KpiCard label="Platform GMV" value={fmtVal(metrics.gmv)} color={T.green} />
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: '10px' }}>
         <div style={{ border: `2px solid ${metrics.pendingKyc > 0 ? T.amber : T.gray100}`, background: T.white, padding: '16px 18px' }}>
           <div style={{ fontSize: '10px', fontWeight: 700, color: T.gray400, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>KYC Queue</div>
           <div style={{ fontSize: '28px', fontWeight: 800, color: metrics.pendingKyc > 0 ? T.amber : T.green }}>{metrics.pendingKyc}</div>
@@ -755,6 +764,11 @@ function Overview({ isMobile }) {
           <div style={{ fontSize: '28px', fontWeight: 800, color: metrics.pendingKyb > 0 ? T.amber : T.green }}>{metrics.pendingKyb}</div>
           <div style={{ fontSize: '11px', color: T.gray400, marginTop: '4px' }}>Depot verifications pending</div>
         </div>
+        <div style={{ border: `2px solid ${metrics.openDisputes > 0 ? T.red : T.gray100}`, background: metrics.openDisputes > 0 ? '#FFF1F0' : T.white, padding: '16px 18px' }}>
+          <div style={{ fontSize: '10px', fontWeight: 700, color: T.gray400, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Open Disputes</div>
+          <div style={{ fontSize: '28px', fontWeight: 800, color: metrics.openDisputes > 0 ? T.red : T.green }}>{metrics.openDisputes}</div>
+          <div style={{ fontSize: '11px', color: T.gray400, marginTop: '4px' }}>Awaiting resolution</div>
+        </div>
       </div>
     </div>
   );
@@ -763,6 +777,24 @@ function Overview({ isMobile }) {
 // ── Root AdminPanel ────────────────────────────────────────────────────────────
 export function AdminPanel({ isMobile }) {
   const [tab, setTab] = useState('overview');
+
+  // Double-check admin status server-side
+  const [confirmed, setConfirmed] = useState(null);
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await sb.auth.getUser();
+      const { data } = await sb.from('profiles').select('is_admin').eq('id', user?.id ?? '').maybeSingle();
+      setConfirmed(!!data?.is_admin);
+    })();
+  }, []);
+  if (confirmed === false) return (
+    <div style={{ padding: '48px', textAlign: 'center', fontFamily: F }}>
+      <div style={{ fontSize: '32px', marginBottom: '12px' }}>🚫</div>
+      <div style={{ fontSize: '16px', fontWeight: 800, color: T.black }}>Access Denied</div>
+      <div style={{ fontSize: '12px', color: T.gray400, marginTop: '6px' }}>You don't have admin privileges.</div>
+    </div>
+  );
+  if (confirmed === null) return <div style={{ padding: '48px', textAlign: 'center', fontFamily: F, color: T.gray400 }}>Verifying access…</div>;
 
   const TABS = [
     { id: 'overview', label: 'Overview',    icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },

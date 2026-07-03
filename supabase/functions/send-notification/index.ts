@@ -146,6 +146,40 @@ const EVENT_TEMPLATES: Record<string, {
     `,
     sms: (d) => `Ventryl URGENT: Order ${d.orderId} SLA expires in ${d.timeLeft}. Login now to respond.`,
   },
+
+  dispute_filed: {
+    subject: (d) => `Dispute Filed on Order ${d.orderId} — Action Required`,
+    email: (d) => `
+      <p>Hi ${d.depotName} Team,</p>
+      <p>A dispute has been filed by <strong>${d.buyerName}</strong> on order <strong>${d.orderId}</strong>.</p>
+      <ul>
+        <li><strong>Reason:</strong> ${d.reason}</li>
+        <li><strong>Reference:</strong> ${d.ref}</li>
+      </ul>
+      <p>Ventryl's team will review this within 24–48 hours. Please ensure all relevant documentation is available.</p>
+      <p style="margin-top:24px;"><a href="https://app.ventryl.com/depot/orders/${d.orderId}"
+         style="background:#FF3B30;color:#fff;padding:12px 24px;text-decoration:none;font-weight:700;display:inline-block;">
+         View Dispute →</a></p>
+    `,
+    sms: (d) => `Ventryl: Dispute filed on order ${d.orderId} by buyer. Ref: ${d.ref}. Login to view details.`,
+  },
+
+  team_invite: {
+    subject: (d) => `You've been invited to join ${d.depotName} on Ventryl`,
+    email: (d) => `
+      <p>Hi${d.name ? ` ${d.name}` : ''},</p>
+      <p>You've been invited to join <strong>${d.depotName}</strong> on Ventryl as a <strong>${d.role}</strong>.</p>
+      <p>Click below to accept the invitation and set up your account.</p>
+      <p style="margin-top:24px;">
+        <a href="https://app.ventryl.com/accept-invite?depot=${encodeURIComponent(d.depotId)}&email=${encodeURIComponent(d.email)}&token=${encodeURIComponent(d.token || '')}"
+           style="background:#111;color:#fff;padding:12px 24px;text-decoration:none;font-weight:700;display:inline-block;">
+          Accept Invitation →
+        </a>
+      </p>
+      <p style="font-size:12px;color:#888;margin-top:16px;">This invitation was sent by a depot administrator. If you were not expecting this, you can safely ignore this email.</p>
+    `,
+    sms: (d) => `Ventryl: You've been invited to join ${d.depotName} as ${d.role}. Visit ventryl.com to accept.`,
+  },
 };
 
 // ── Email via Resend ───────────────────────────────────────────────────────────

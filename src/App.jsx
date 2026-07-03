@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
 import { useAuthStore } from './store/authStore';
 import { useVentrylStore } from './store/ventrylStore';
 import { AuthScreens } from './screens/Auth';
 import { useOrderRealtime, useDepotInboxRealtime, useProfileRealtime } from './lib/realtime';
-import { kyc as kycApi, kyb as kybApi, notifications as notifApi, depots as depotsApi, profiles as profilesApi } from './lib/api';
+import { kyc as kycApi, kyb as kybApi, notifications as notifApi, depots as depotsApi, profiles as profilesApi, orders as ordersApi, negotiations as negotiationsApi, teamMembers as teamMembersApi } from './lib/api';
 import { supabase } from './lib/supabase';
 import { printWaybill, printInvoice } from './lib/documents';
 import { AdminPanel } from './screens/AdminPanel';
@@ -76,271 +76,22 @@ const NG_STATES={
   "Zamfara":["Anka","Bakura","Birnin Magaji/Kiyaw","Bukkuyum","Bungudu","Gummi","Gusau","Kaura Namoda","Maradun","Maru","Shinkafi","Talata Mafara","Tsafe","Zurmi"],
 };
 
-const DEPOTS = [
-  { id:1, name:"Nepal Energies", location:"Apapa, Lagos", pms:795, ago:null, dpk:null, lpg:1040, atk:null, lpfo:855, hpfo:null, stock:61200, cap:85000, rating:4.8, orders:312, slots:5, eta:"4–6h" },
-  { id:2, name:"Eterna Plc", location:"Warri, Delta", pms:797, ago:1185, dpk:1330, lpg:1055, atk:1870, lpfo:860, hpfo:790, stock:38400, cap:60000, rating:4.6, orders:198, slots:3, eta:"6–8h" },
-  { id:3, name:"Matrix Energy", location:"Port Harcourt, Rivers", pms:800, ago:1190, dpk:1345, lpg:null, atk:1885, lpfo:null, hpfo:785, stock:53200, cap:70000, rating:4.7, orders:241, slots:4, eta:"8–10h" },
-  { id:4, name:"MRS Oil", location:"Kano, Kano State", pms:803, ago:1175, dpk:1338, lpg:1048, atk:1892, lpfo:null, hpfo:null, stock:31500, cap:45000, rating:4.5, orders:112, slots:2, eta:"5–7h" },
-];
-const ORDERS = [
-  { id:"VTL-00841", buyer:"Chukwuma Fuels Ltd", depot:"Nepal Energies", product:"PMS", vol:90000, value:71700000, status:"delivered", placed:"Mar 8", trucks:3, progress:100 },
-  { id:"VTL-00838", buyer:"Chukwuma Fuels Ltd", depot:"Nepal Energies", product:"PMS", vol:66000, value:52470000, status:"in_transit", placed:"Mar 10", trucks:2, progress:65 },
-  { id:"VTL-00835", buyer:"Chukwuma Fuels Ltd", depot:"Eterna Plc", product:"AGO", vol:33000, value:39105000, status:"confirmed", placed:"Mar 10", trucks:1, progress:20 },
-];
-const INCOMING = [
-  { id:"VTL-00844", buyer:"Horizon Petroleum", type:"Petrol Station", products:["PMS","AGO"], product:"PMS + AGO", vol:99000, value:91575000, trucks:3, location:"Ikeja, Lagos", submitted:"7 min ago", slaLeft:"1h 53m", status:"pending" },
-  { id:"VTL-00843", buyer:"Horizon Petroleum", type:"Petrol Station", product:"PMS", vol:99000, value:78705000, trucks:3, location:"Ikeja, Lagos", submitted:"12 min ago", slaLeft:"1h 48m", status:"pending" },
-  { id:"VTL-00842", buyer:"Skyline Aviation", type:"Aviation", product:"AGO", vol:33000, value:39105000, trucks:1, location:"Murtala Airport", submitted:"34 min ago", slaLeft:"1h 26m", status:"pending" },
-  { id:"VTL-00840", buyer:"Femi Oil & Gas", type:"Petrol Station", product:"PMS", vol:66000, value:52470000, trucks:2, location:"Lekki, Lagos", submitted:"2h ago", slaLeft:"Confirmed", status:"confirmed" },
-];
-const PRICE_HISTORY = [
-  {day:"Mar 4",pms:792,ago:1170},{day:"Mar 5",pms:793,ago:1172},{day:"Mar 6",pms:795,ago:1175},
-  {day:"Mar 7",pms:794,ago:1174},{day:"Mar 8",pms:797,ago:1180},{day:"Mar 9",pms:800,ago:1185},{day:"Mar 10",pms:795,ago:1185},
-];
-const REVENUE_DATA = [
-  {month:"Oct",revenue:95},{month:"Nov",revenue:124},{month:"Dec",revenue:148},
-  {month:"Jan",revenue:167},{month:"Feb",revenue:198},{month:"Mar",revenue:218},
-];
-const DAILY = [
-  {day:"Mon",pms:4,ago:2},{day:"Tue",pms:3,ago:1},{day:"Wed",pms:5,ago:3},
-  {day:"Thu",pms:6,ago:2},{day:"Fri",pms:4,ago:4},{day:"Sat",pms:7,ago:1},{day:"Sun",pms:2,ago:0},
-];
-const SLOTS = [
-  {time:"07:00",bay:"Bay 1",order:"VTL-00841",product:"PMS",trucks:3,status:"in_transit"},
-  {time:"09:00",bay:"Bay 2",order:"VTL-00839",product:"PMS",trucks:4,status:"loading"},
-  {time:"11:00",bay:"Bay 1",order:"VTL-00840",product:"PMS",trucks:2,status:"confirmed"},
-  {time:"13:00",bay:"Bay 2",order:"VTL-00842",product:"AGO",trucks:1,status:"pending"},
-  {time:"15:00",bay:"Bay 1",order:"—",product:"—",trucks:null,status:"open"},
-  {time:"17:00",bay:"Bay 2",order:"—",product:"—",trucks:null,status:"open"},
-];
-const BUYERS_DATA = [
-  {name:"Chukwuma Fuels Ltd",type:"Petrol Station",orders:7,vol:"363k L",spend:"₦280.5M",score:720,tier:"Silver",lastOrder:"Mar 10"},
-  {name:"Horizon Petroleum",type:"Petrol Station",orders:5,vol:"215k L",spend:"₦171.3M",score:810,tier:"Gold",lastOrder:"Mar 9"},
-  {name:"Silvergate Energy",type:"Petrol Station",orders:4,vol:"396k L",spend:"₦316.5M",score:680,tier:"Silver",lastOrder:"Mar 8"},
-  {name:"Skyline Aviation",type:"Aviation",orders:3,vol:"99k L",spend:"₦117.3M",score:760,tier:"Silver",lastOrder:"Mar 7"},
-  {name:"Femi Oil & Gas",type:"Petrol Station",orders:2,vol:"66k L",spend:"₦52.5M",score:590,tier:"Bronze",lastOrder:"Mar 5"},
-];
-const TXN = [
-  {id:"TXN-4421",desc:"Wallet Top-up",amount:"+₦150,000,000",date:"Mar 10",type:"credit"},
-  {id:"TXN-4420",desc:"Order VTL-00841 — Payment Hold",amount:"-₦71,700,000",date:"Mar 8",type:"debit"},
-  {id:"TXN-4419",desc:"Order VTL-00838 — Payment Hold",amount:"-₦52,470,000",date:"Mar 10",type:"debit"},
-  {id:"TXN-4418",desc:"Order VTL-00841 — Payment Released",amount:"₦71,700,000",date:"Mar 8",type:"paid"},
-];
 
 
-/* ════════════════════════════════════════════
-   ENRICHED ORDER DATA
-════════════════════════════════════════════ */
-const ORDER_META = {
-  "VTL-00841":{
-    buyer:{name:"Emeka Chukwuma",company:"Chukwuma Fuels Ltd",type:"Petrol Station",phone:"+234 801 234 5678",email:"emeka@chukwumafuels.ng",location:"Ikeja, Lagos",rc:"RC-1092843"},
-    depot:{name:"Nepal Energies",location:"Apapa, Lagos",contact:"Depot Ops · +234 802 345 6789"},
-    delivery:{mode:"delivery",state:"Lagos",lga:"Surulere",address:"22 Bode Thomas Street, Surulere"},
-    product:"PMS",vol:90000,pricePerLitre:795,value:71700000,trucks:3,
-    placed:"Mar 8, 2026 · 09:14",confirmed:"Mar 8, 2026 · 09:52",dispatchDate:"Mar 9, 2026 · 07:00",deliveredDate:"Mar 9, 2026 · 14:30",
-    bay:"Bay 1",loadingRef:"LOAD-2026-031",
-    trucks_detail:[
-      {id:"T1",driver:"Emeka Nwosu",plate:"LSD-481-KJ",vol:33000,departure:"07:00",eta:"12:30",arrivalTime:"12:18",progress:100,status:"delivered"},
-      {id:"T2",driver:"Bayo Adeyemi",plate:"LSD-219-AB",vol:33000,departure:"07:05",eta:"12:45",arrivalTime:"13:02",progress:100,status:"delivered"},
-      {id:"T3",driver:"Chidi Okonkwo",plate:"LSD-774-QR",vol:24000,departure:"07:10",eta:"13:00",arrivalTime:"13:22",progress:100,status:"delivered"},
-    ],
-    timeline:[
-      {time:"Mar 8 · 09:14",event:"Order placed by Chukwuma Fuels Ltd",actor:"buyer"},
-      {time:"Mar 8 · 09:52",event:"Order confirmed by Nepal Energies",actor:"depot"},
-      {time:"Mar 8 · 10:20",event:"Bay 1 assigned · Loading ref: LOAD-2026-031",actor:"depot"},
-      {time:"Mar 9 · 07:00",event:"3 trucks dispatched from depot",actor:"depot"},
-      {time:"Mar 9 · 12:18",event:"Truck 1 (LSD-481-KJ) delivered",actor:"system"},
-      {time:"Mar 9 · 13:02",event:"Truck 2 (LSD-219-AB) delivered",actor:"system"},
-      {time:"Mar 9 · 13:22",event:"Truck 3 (LSD-774-QR) delivered",actor:"system"},
-      {time:"Mar 9 · 14:30",event:"Delivery confirmed · Payment processed",actor:"system"},
-    ],
-    financials:{productValue:71700000,platformFee:717000,vat:128460,netToDepot:70983000,paymentStatus:"paid"},
-  },
-  "VTL-00838":{
-    buyer:{name:"Emeka Chukwuma",company:"Chukwuma Fuels Ltd",type:"Petrol Station",phone:"+234 801 234 5678",email:"emeka@chukwumafuels.ng",location:"Lekki, Lagos",rc:"RC-1092843"},
-    depot:{name:"Nepal Energies",location:"Apapa, Lagos",contact:"Depot Ops · +234 802 345 6789"},
-    delivery:{mode:"delivery",state:"Lagos",lga:"Eti-Osa",address:"5 Admiralty Way, Lekki Phase 1"},
-    product:"PMS",vol:66000,pricePerLitre:795,value:52470000,trucks:2,
-    placed:"Mar 10, 2026 · 10:05",confirmed:"Mar 10, 2026 · 10:47",dispatchDate:"Mar 11, 2026 · 08:00",deliveredDate:null,
-    bay:"Bay 2",loadingRef:"LOAD-2026-034",
-    trucks_detail:[
-      {id:"T1",driver:"Emeka Nwosu",plate:"LSD-481-KJ",vol:33000,departure:"08:00",eta:"13:30",arrivalTime:null,progress:65,status:"in_transit"},
-      {id:"T2",driver:"Bayo Adeyemi",plate:"LSD-219-AB",vol:33000,departure:"08:10",eta:"13:45",arrivalTime:null,progress:60,status:"in_transit"},
-    ],
-    timeline:[
-      {time:"Mar 10 · 10:05",event:"Order placed by Chukwuma Fuels Ltd",actor:"buyer"},
-      {time:"Mar 10 · 10:47",event:"Order confirmed by Nepal Energies",actor:"depot"},
-      {time:"Mar 10 · 11:15",event:"Bay 2 assigned · Loading ref: LOAD-2026-034",actor:"depot"},
-      {time:"Mar 11 · 08:00",event:"2 trucks dispatched from depot",actor:"depot"},
-      {time:"Mar 11 · 08:00",event:"En route · ETA 13:30 – 13:45",actor:"system"},
-    ],
-    financials:{productValue:52470000,platformFee:524700,vat:94446,netToDepot:51945300,paymentStatus:"processing"},
-  },
-  "VTL-00835":{
-    buyer:{name:"Emeka Chukwuma",company:"Chukwuma Fuels Ltd",type:"Petrol Station",phone:"+234 801 234 5678",email:"emeka@chukwumafuels.ng",location:"Port Harcourt, Rivers",rc:"RC-1092843"},
-    depot:{name:"Eterna Plc",location:"Port Harcourt, Rivers",contact:"Depot Ops · +234 803 456 7890"},
-    delivery:{mode:"delivery",state:"Rivers",lga:"Port Harcourt",address:"8 Rumuola Road, Port Harcourt"},
-    product:"AGO",vol:33000,pricePerLitre:1185,value:39105000,trucks:1,
-    placed:"Mar 10, 2026 · 11:20",confirmed:"Mar 10, 2026 · 12:01",dispatchDate:null,deliveredDate:null,
-    bay:null,loadingRef:null,
-    trucks_detail:[
-      {id:"T1",driver:"TBD",plate:"TBD",vol:33000,departure:"TBD",eta:"TBD",arrivalTime:null,progress:0,status:"confirmed"},
-    ],
-    timeline:[
-      {time:"Mar 10 · 11:20",event:"Order placed by Chukwuma Fuels Ltd",actor:"buyer"},
-      {time:"Mar 10 · 12:01",event:"Order confirmed by Eterna Plc",actor:"depot"},
-      {time:"Mar 10 · 12:01",event:"Awaiting loading bay assignment",actor:"system"},
-    ],
-    financials:{productValue:39105000,platformFee:391050,vat:70389,netToDepot:38713950,paymentStatus:"processing"},
-  },
-  "VTL-00844":{
-    buyer:{name:"Tunde Oladele",company:"Horizon Petroleum",type:"Petrol Station",phone:"+234 809 876 5432",email:"ops@horizonpetroleum.ng",location:"Ikeja, Lagos",rc:"RC-0872134"},
-    depot:{name:"Nepal Energies",location:"Apapa, Lagos",contact:"Depot Ops · +234 802 345 6789"},
-    delivery:{mode:"delivery",state:"Lagos",lga:"Ikeja",address:"14 Allen Avenue, beside Zenith Bank, Ikeja"},
-    products:[
-      {name:"PMS", fullName:"Premium Motor Spirit", vol:66000, pricePerLitre:795,  value:52470000, trucks:2},
-      {name:"AGO", fullName:"Automotive Gas Oil",   vol:33000, pricePerLitre:1185, value:39105000, trucks:1},
-    ],
-    vol:99000, value:91575000, trucks:3,
-    placed:"Today · 09:56",confirmed:null,dispatchDate:null,deliveredDate:null,
-    bay:null,loadingRef:null,slaLeft:"1h 53m",
-    trucks_detail:[
-      {id:"T1",driver:"TBD",plate:"TBD",vol:33000,departure:"TBD",eta:"TBD",arrivalTime:null,progress:0,status:"pending",product:"PMS"},
-      {id:"T2",driver:"TBD",plate:"TBD",vol:33000,departure:"TBD",eta:"TBD",arrivalTime:null,progress:0,status:"pending",product:"PMS"},
-      {id:"T3",driver:"TBD",plate:"TBD",vol:33000,departure:"TBD",eta:"TBD",arrivalTime:null,progress:0,status:"pending",product:"AGO"},
-    ],
-    timeline:[
-      {time:"Today · 09:56",event:"Multi-product order submitted by Horizon Petroleum",actor:"buyer"},
-      {time:"Today · 09:56",event:"Payment initiated · ₦91.6M held in escrow",actor:"system"},
-    ],
-    financials:{productValue:91575000,platformFee:915750,vat:164835,netToDepot:90659250,paymentStatus:"pending"},
-  },
-  "VTL-00843":{
-    buyer:{name:"Tunde Oladele",company:"Horizon Petroleum",type:"Petrol Station",phone:"+234 809 876 5432",email:"ops@horizonpetroleum.ng",location:"Ikeja, Lagos",rc:"RC-0872134"},
-    depot:{name:"Nepal Energies",location:"Apapa, Lagos",contact:"Depot Ops · +234 802 345 6789"},
-    delivery:{mode:"delivery",state:"Lagos",lga:"Ikeja",address:"14 Allen Avenue, beside Zenith Bank, Ikeja"},
-    product:"PMS",vol:99000,pricePerLitre:795,value:78705000,trucks:3,
-    placed:"Today · 09:03",confirmed:null,dispatchDate:null,deliveredDate:null,
-    bay:null,loadingRef:null,slaLeft:"1h 48m",
-    trucks_detail:[
-      {id:"T1",driver:"TBD",plate:"TBD",vol:33000,departure:"TBD",eta:"TBD",arrivalTime:null,progress:0,status:"pending"},
-      {id:"T2",driver:"TBD",plate:"TBD",vol:33000,departure:"TBD",eta:"TBD",arrivalTime:null,progress:0,status:"pending"},
-      {id:"T3",driver:"TBD",plate:"TBD",vol:33000,departure:"TBD",eta:"TBD",arrivalTime:null,progress:0,status:"pending"},
-    ],
-    timeline:[
-      {time:"Today · 09:03",event:"Order submitted by Horizon Petroleum",actor:"buyer"},
-      {time:"Today · 09:03",event:"Payment initiated · ₦78.7M held",actor:"system"},
-    ],
-    financials:{productValue:78705000,platformFee:787050,vat:141669,netToDepot:77917950,paymentStatus:"pending"},
-  },
-  "VTL-00842":{
-    buyer:{name:"Amaka Obi",company:"Skyline Aviation",type:"Aviation",phone:"+234 808 765 4321",email:"fuel@skylineaviation.ng",location:"Murtala Airport, Lagos",rc:"RC-0543219"},
-    depot:{name:"Nepal Energies",location:"Apapa, Lagos",contact:"Depot Ops · +234 802 345 6789"},
-    delivery:{mode:"pickup",state:null,lga:null,address:null},
-    product:"AGO",vol:33000,pricePerLitre:1185,value:39105000,trucks:1,
-    placed:"Today · 08:41",confirmed:null,dispatchDate:null,deliveredDate:null,
-    bay:null,loadingRef:null,slaLeft:"1h 26m",
-    trucks_detail:[
-      {id:"T1",driver:"TBD",plate:"TBD",vol:33000,departure:"TBD",eta:"TBD",arrivalTime:null,progress:0,status:"pending"},
-    ],
-    timeline:[
-      {time:"Today · 08:41",event:"Order submitted by Skyline Aviation",actor:"buyer"},
-      {time:"Today · 08:41",event:"Payment initiated · ₦39.1M held",actor:"system"},
-    ],
-    financials:{productValue:39105000,platformFee:391050,vat:70389,netToDepot:38713950,paymentStatus:"pending"},
-  },
-};
 
 /* Shared cross-component store for delivery cost negotiation (survives navigation within session) */
 const _deliveryQuoteStore = {};
 
-/* Orders placed during the session by the buyer */
-const _placedOrdersStore = []; // [{id,buyer,depot,product,vol,value,status,placed,trucks,...,meta:{}}]
-let _nextOrderSeq = 845 + Math.floor((Date.now() % 1000000) / 100); // unique per session
 
 /* ── Order lifecycle stores (persist across navigation) ── */
 const _orderStatusStore    = {};  // orderId -> status string
 const _orderBayStore       = {};  // orderId -> bay string
-const _orderTruckListStore = {};  // orderId -> truckList array
+const _orderTruckListStore = {};  // orderId -> liveTrucks array
 const _orderDispatchedStore= {};  // orderId -> boolean
-const _orderStatusLogStore = {};  // orderId -> statusLog array
+const _orderStatusLogStore = {};  // orderId -> liveTimeline array
 const _gateRecordStore     = {};  // orderId -> {buyerTrucks, waybillRef, gateNote}
 const _buyerConfirmedStore = {};  // orderId -> boolean
 
-/* Pre-seed delivery cost negotiations so buyer sees pending quotes */
-Object.assign(_deliveryQuoteStore, {
-  "VTL-00843":{rounds:[{from:"depot",amount:350000,time:"09:25"}],status:"buyer_pending"},
-  "VTL-00844":{rounds:[{from:"depot",amount:520000,time:"10:08"}],status:"buyer_pending"},
-  "VTL-00835":{rounds:[{from:"depot",amount:280000,time:"12:15"}],status:"buyer_pending"},
-});
-
-/* Pre-seed depot-side confirmed orders so inbox & detail views are populated */
-Object.assign(_orderStatusStore, {
-  "VTL-00843": "confirmed",   // delivery — awaiting buyer approval of delivery cost quote
-  "VTL-00844": "confirmed",   // delivery — awaiting buyer approval of delivery cost quote
-  "VTL-00842": "confirmed",   // pickup — bay assigned, ready for loading
-  // Buyer-visible orders
-  "VTL-00835": "confirmed",   // buyer's confirmed delivery order — delivery cost quote pending
-  "VTL-00838": "in_transit",  // buyer's in-transit order — 2 trucks en route
-});
-Object.assign(_orderBayStore, {
-  "VTL-00842": "Bay 3",
-  "VTL-00838": "Bay 2",       // buyer can see bay in order detail
-});
-Object.assign(_orderTruckListStore, {
-  "VTL-00838": [
-    {id:"T1",driver:"Emeka Nwosu",plate:"LSD-481-KJ",vol:33000,departure:"08:00",eta:"13:30",arrivalTime:null,progress:65,status:"in_transit"},
-    {id:"T2",driver:"Bayo Adeyemi",plate:"LSD-219-AB",vol:33000,departure:"08:10",eta:"13:45",arrivalTime:null,progress:60,status:"in_transit"},
-  ],
-});
-Object.assign(_orderDispatchedStore, {
-  "VTL-00838": true,
-});
-Object.assign(_orderStatusLogStore, {
-  "VTL-00843": [
-    {from:"pending",to:"confirmed",note:"Order confirmed by Nepal Energies",time:"09:12"},
-  ],
-  "VTL-00844": [
-    {from:"pending",to:"confirmed",note:"Order confirmed by Nepal Energies",time:"10:05"},
-  ],
-  "VTL-00842": [
-    {from:"pending",to:"confirmed",note:"Order confirmed by Nepal Energies",time:"08:52"},
-  ],
-  "VTL-00835": [
-    {from:"pending",to:"confirmed",note:"Order confirmed by Eterna Plc",time:"12:01"},
-  ],
-  "VTL-00838": [
-    {from:"pending",to:"confirmed",note:"Order confirmed by Nepal Energies",time:"10:47"},
-    {from:"confirmed",to:"loading",note:"Bay 2 assigned · LOAD-2026-034",time:"11:15"},
-    {from:"loading",to:"in_transit",note:"2 trucks dispatched from depot",time:"08:00"},
-  ],
-});
-
-/* Pre-seed one buyer-placed order so both portals show live activity */
-_placedOrdersStore.push({
-  id:"VTL-00845",
-  buyer:"Chukwuma Fuels Ltd",depot:"Nepal Energies",
-  product:"PMS",vol:66000,value:52470000,status:"pending",
-  placed:"Today · 11:34",trucks:2,progress:0,
-  type:"Petrol Station",location:"Eti-Osa, Lagos",submitted:"26 min ago",slaLeft:"1h 34m",
-  meta:{
-    buyer:{name:"Emeka Chukwuma",company:"Chukwuma Fuels Ltd",type:"Petrol Station",phone:"+234 801 234 5678",email:"emeka@chukwumafuels.ng",location:"Eti-Osa, Lagos",rc:"RC-1092843"},
-    depot:{name:"Nepal Energies",location:"Apapa, Lagos",contact:"Depot Ops · +234 802 345 6789"},
-    delivery:{mode:"delivery",state:"Lagos",lga:"Eti-Osa",address:"12 Adeola Odeku Street, Victoria Island"},
-    product:"PMS",vol:66000,pricePerLitre:795,value:52470000,trucks:2,
-    placed:"Today · 11:34",confirmed:null,dispatchDate:null,deliveredDate:null,
-    bay:null,loadingRef:null,slaLeft:"1h 34m",
-    trucks_detail:[
-      {id:"T1",driver:"TBD",plate:"TBD",vol:33000,departure:"TBD",eta:"TBD",arrivalTime:null,progress:0,status:"pending"},
-      {id:"T2",driver:"TBD",plate:"TBD",vol:33000,departure:"TBD",eta:"TBD",arrivalTime:null,progress:0,status:"pending"},
-    ],
-    timeline:[
-      {time:"Today · 11:34",event:"Order placed by Chukwuma Fuels Ltd",actor:"buyer"},
-      {time:"Today · 11:34",event:"Payment initiated · ₦52.5M held in escrow",actor:"system"},
-    ],
-    financials:{productValue:52470000,platformFee:524700,vat:94446,netToDepot:51945300,paymentStatus:"pending"},
-  },
-});
 
 // rounds: [{from:"depot"|"buyer", amount:number, time:string}]
 // status: "none" | "buyer_pending" | "depot_pending" | "agreed"
@@ -493,10 +244,16 @@ function Topbar({crumb,pills,isMobile,onMenuToggle,portalLabel}) {
    ORDER FLOW (3-step · multi-product)
 ════════════════════════════════════════════ */
 function OrderFlow({onDone,isMobile}) {
+  const {user:authUser}=useAuthStore();
+  const {loadBuyerOrders,marketDepots,marketDepotsLoaded,loadMarketDepots,walletNGN,loadWallet}=useVentrylStore();
+  useEffect(()=>{if(!marketDepotsLoaded)loadMarketDepots();},[]);
+  useEffect(()=>{if(authUser?.id&&!walletNGN)loadWallet(authUser.id);},[authUser?.id]);
   const [step,setStep]=useState(1);
   const [sel,setSel]=useState(null);
   const [done,setDone]=useState(false);
   const [submittedId,setSubmittedId]=useState(null);
+  const [submitting,setSubmitting]=useState(false);
+  const [submitError,setSubmitError]=useState(null);
   const [deliveryMode,setDeliveryMode]=useState("delivery"); // "delivery" | "pickup"
   const [pickupNote,setPickupNote]=useState("");
   const [deliveryState,setDeliveryState]=useState("");
@@ -504,17 +261,26 @@ function OrderFlow({onDone,isMobile}) {
   const [deliveryAddress,setDeliveryAddress]=useState("");
   const lgasForState=deliveryState?NG_STATES[deliveryState]||[]:[];
 
-  // products: { PMS: {enabled,vol}, AGO: {enabled,vol}, ... }
+  const MIN_VOL=11000;
+  const VOL_PRESETS=[11000,22000,33000,44000,66000];
+
+  // products: { PMS: {enabled,vol,price,isCustom}, ... } — only products the depot has active
   const initProducts=(depot)=>{
     const ps={};
-    if(depot.pms) ps["PMS"]={enabled:true,vol:66000,price:depot.pms};
-    if(depot.ago) ps["AGO"]={enabled:false,vol:33000,price:depot.ago};
+    const pairs=[["PMS",depot.pms],["AGO",depot.ago],["DPK",depot.dpk],["LPG",depot.lpg],["ATK",depot.atk]];
+    pairs.forEach(([name,price],i)=>{
+      if(price) ps[name]={enabled:i===0,vol:MIN_VOL,price,isCustom:false};
+    });
+    if(Object.keys(ps).length>0&&!Object.values(ps).some(p=>p.enabled)){
+      Object.values(ps)[0].enabled=true;
+    }
     return ps;
   };
   const [products,setProducts]=useState({});
 
   const toggleProduct=(name)=>setProducts(p=>({...p,[name]:{...p[name],enabled:!p[name].enabled}}));
-  const setVol=(name,v)=>setProducts(p=>({...p,[name]:{...p[name],vol:Number(v)}}));
+  const setVol=(name,v)=>setProducts(p=>({...p,[name]:{...p[name],vol:Math.max(MIN_VOL,Number(v)||MIN_VOL)}}));
+  const setCustomMode=(name,on)=>setProducts(p=>({...p,[name]:{...p[name],isCustom:on}}));
 
   const enabledProducts=Object.entries(products).filter(([,p])=>p.enabled);
   const totalTrucks=enabledProducts.reduce((s,[,p])=>s+Math.ceil(p.vol/33000),0);
@@ -583,7 +349,11 @@ function OrderFlow({onDone,isMobile}) {
       {step===1&&(
         <div>
           <div style={{fontSize:"16px",fontWeight:800,color:T.black,marginBottom:"14px"}}>Choose a Depot</div>
-          {[...DEPOTS].sort((a,b)=>a.pms-b.pms).map((d,i)=>(
+          {marketDepotsLoaded&&marketDepots.length===0&&<div style={{padding:"32px",textAlign:"center",fontSize:"13px",color:T.gray400}}>No depots with available stock right now. Check back soon.</div>}
+          {[...(marketDepots||[])]
+            .filter(d=>(d.pms||d.ago||d.dpk||d.lpg||d.atk)&&(d.stock??1)>0)
+            .sort((a,b)=>(a.pms||a.ago||a.dpk||a.lpg||a.atk||9999)-(b.pms||b.ago||b.dpk||b.lpg||b.atk||9999))
+            .map((d,i)=>(
             <div key={d.id} role="button" tabIndex={0} aria-pressed={sel?.id===d.id}
               onClick={()=>handleSelectDepot(d)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" ")handleSelectDepot(d);}}
               style={{border:`2px solid ${sel?.id===d.id?T.green:T.gray100}`,background:T.white,padding:"16px",cursor:"pointer",marginBottom:"10px",transition:"border-color 0.15s"}}
@@ -599,8 +369,9 @@ function OrderFlow({onDone,isMobile}) {
                     </div>
                     <div style={{fontSize:"11px",color:T.gray400,marginTop:"2px"}}>{d.location} · ETA {d.eta} · ★{d.rating} · {d.slots} slots</div>
                     <div style={{display:"flex",gap:"8px",marginTop:"8px",flexWrap:"wrap"}}>
-                      <span style={{background:T.gray100,color:T.black,fontSize:"10px",fontWeight:800,padding:"3px 8px"}}>PMS ₦{d.pms}/L</span>
-                      {d.ago&&<span style={{background:T.gray100,color:T.black,fontSize:"10px",fontWeight:800,padding:"3px 8px"}}>AGO ₦{d.ago}/L</span>}
+                      {[["PMS",d.pms],["AGO",d.ago],["DPK",d.dpk],["LPG",d.lpg],["ATK",d.atk]].filter(([,p])=>p).map(([name,price])=>(
+                        <span key={name} style={{background:T.gray100,color:T.black,fontSize:"10px",fontWeight:800,padding:"3px 8px"}}>{name} ₦{price}/L</span>
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -637,32 +408,56 @@ function OrderFlow({onDone,isMobile}) {
                   </div>
                 </div>
                 {p.enabled&&<div style={{textAlign:"right"}}>
-                  <div style={{fontSize:"13px",fontWeight:800,color:T.black}}>₦{(p.price*p.vol/1e6).toFixed(2)}M</div>
-                  <div style={{fontSize:"10px",color:T.gray400}}>{Math.ceil(p.vol/33000)} truck{Math.ceil(p.vol/33000)!==1?"s":""}</div>
+                  <div style={{fontSize:"13px",fontWeight:800,color:T.black}}>₦{(p.price*p.vol).toLocaleString('en-NG')}</div>
+                  <div style={{fontSize:"10px",color:T.gray400}}>{p.vol.toLocaleString()} L · {Math.ceil(p.vol/33000)} truck{Math.ceil(p.vol/33000)!==1?"s":""}</div>
                 </div>}
               </div>
 
               {/* Volume controls (visible when enabled) */}
               {p.enabled&&(
                 <div>
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:"8px"}}>
-                    <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.06em"}}>Volume</div>
-                    <div style={{fontSize:"13px",fontWeight:800,color:T.black}}>{(p.vol/1000).toFixed(0)},000 L · {Math.ceil(p.vol/33000)} truck{Math.ceil(p.vol/33000)!==1?"s":""}</div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:"10px"}}>
+                    <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.06em"}}>Volume (Litres)</div>
+                    <div style={{textAlign:"right"}}>
+                      <span style={{fontSize:"14px",fontWeight:800,color:T.black}}>{p.vol.toLocaleString()} L</span>
+                      <span style={{fontSize:"10px",color:T.gray400,marginLeft:"6px"}}>{Math.ceil(p.vol/33000)} truck{Math.ceil(p.vol/33000)!==1?"s":""}</span>
+                    </div>
                   </div>
-                  <input type="range" min={33000} max={198000} step={33000} value={p.vol} onChange={e=>setVol(name,e.target.value)}
-                    style={{width:"100%",cursor:"pointer",accentColor:T.black}}/>
-                  <div style={{display:"flex",justifyContent:"space-between",marginTop:"4px"}}>
-                    <span style={{fontSize:"10px",color:T.gray400}}>33k L (1 truck)</span>
-                    <span style={{fontSize:"10px",color:T.gray400}}>198k L (6 trucks)</span>
+                  {/* Preset buttons */}
+                  <div style={{display:"flex",gap:"6px",flexWrap:"wrap"}}>
+                    {VOL_PRESETS.map(v=>{
+                      const active=!p.isCustom&&p.vol===v;
+                      return (
+                        <button key={v} onClick={()=>{setCustomMode(name,false);setVol(name,v);}}
+                          style={{padding:"6px 12px",fontSize:"13px",fontWeight:800,cursor:"pointer",fontFamily:F,
+                            background:active?T.black:"#fff",color:active?T.white:T.gray600,
+                            border:`1px solid ${active?T.black:T.gray200}`,minHeight:"32px"}}>
+                          {v.toLocaleString()}
+                        </button>
+                      );
+                    })}
+                    <button onClick={()=>setCustomMode(name,true)}
+                      style={{padding:"6px 12px",fontSize:"13px",fontWeight:800,cursor:"pointer",fontFamily:F,
+                        background:p.isCustom?T.black:"#fff",color:p.isCustom?T.white:T.gray600,
+                        border:`1px solid ${p.isCustom?T.black:T.gray200}`,minHeight:"32px"}}>
+                      Custom
+                    </button>
                   </div>
-                  {/* Quick-pick truck buttons */}
-                  <div style={{display:"flex",gap:"6px",marginTop:"10px",flexWrap:"wrap"}}>
-                    {[1,2,3,4,5,6].map(t=>(
-                      <button key={t} onClick={()=>setVol(name,t*33000)} style={{padding:"5px 10px",fontSize:"10px",fontWeight:800,cursor:"pointer",fontFamily:F,background:Math.ceil(p.vol/33000)===t?T.black:T.white,color:Math.ceil(p.vol/33000)===t?T.white:T.gray600,border:`1px solid ${Math.ceil(p.vol/33000)===t?T.black:T.gray200}`,minHeight:"30px"}}>
-                        {t}T
-                      </button>
-                    ))}
-                  </div>
+                  {/* Custom liter input */}
+                  {p.isCustom&&(
+                    <div style={{marginTop:"10px",display:"flex",alignItems:"center",gap:"8px"}}>
+                      <input type="number" min={MIN_VOL} step={1000}
+                        defaultValue={p.vol}
+                        onChange={e=>setVol(name,e.target.value)}
+                        placeholder={`Min ${MIN_VOL.toLocaleString()} L`}
+                        style={{flex:1,border:`1px solid ${T.gray200}`,padding:"8px 10px",fontSize:"13px",fontWeight:700,fontFamily:F,outline:"none",minWidth:0}}
+                        onFocus={e=>e.target.style.borderColor=T.black}
+                        onBlur={e=>{e.target.style.borderColor=T.gray200;if(Number(e.target.value)<MIN_VOL)setVol(name,MIN_VOL);}}
+                      />
+                      <span style={{fontSize:"11px",color:T.gray400,whiteSpace:"nowrap"}}>litres</span>
+                    </div>
+                  )}
+                  <div style={{fontSize:"10px",color:T.gray400,marginTop:"6px"}}>Minimum order: {MIN_VOL.toLocaleString()} L</div>
                 </div>
               )}
             </div>
@@ -798,7 +593,7 @@ function OrderFlow({onDone,isMobile}) {
                 {enabledProducts.map(([name,p])=>(
                   <div key={name}>
                     <div style={{fontSize:"9px",fontWeight:700,color:T.gray400,textTransform:"uppercase",marginBottom:"2px"}}>{name}</div>
-                    <div style={{fontSize:"16px",fontWeight:800,color:T.white}}>{(p.vol/1000).toFixed(0)}k L</div>
+                    <div style={{fontSize:"16px",fontWeight:800,color:T.white}}>{p.vol.toLocaleString()} L</div>
                   </div>
                 ))}
                 <div>
@@ -807,7 +602,7 @@ function OrderFlow({onDone,isMobile}) {
                 </div>
                 <div>
                   <div style={{fontSize:"9px",fontWeight:700,color:T.gray400,textTransform:"uppercase",marginBottom:"2px"}}>Total</div>
-                  <div style={{fontSize:"16px",fontWeight:800,color:T.green}}>₦{(totalValue/1e6).toFixed(2)}M</div>
+                  <div style={{fontSize:"16px",fontWeight:800,color:T.green}}>₦{totalValue.toLocaleString('en-NG')}</div>
                 </div>
               </div>
             </div>
@@ -859,7 +654,7 @@ function OrderFlow({onDone,isMobile}) {
                   <span style={{fontSize:"13px",fontWeight:800,color:T.black}}>{name}</span>
                   <span style={{fontSize:"13px",fontWeight:800,color:T.black}}>₦{(p.price*p.vol).toLocaleString()}</span>
                 </div>
-                <div style={{fontSize:"11px",color:T.gray400}}>{(p.vol/1000).toFixed(0)}k L · ₦{p.price.toLocaleString()}/L · {Math.ceil(p.vol/33000)} truck{Math.ceil(p.vol/33000)!==1?"s":""}</div>
+                <div style={{fontSize:"11px",color:T.gray400}}>{p.vol.toLocaleString()} L · ₦{p.price.toLocaleString()}/L · {Math.ceil(p.vol/33000)} truck{Math.ceil(p.vol/33000)!==1?"s":""}</div>
               </div>
             ))}
             <div style={{display:"flex",justifyContent:"space-between",padding:"14px 18px",fontSize:"15px"}}>
@@ -869,13 +664,23 @@ function OrderFlow({onDone,isMobile}) {
           </div>
 
           {/* Wallet */}
-          <div style={{background:T.greenLight,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"16px"}}>
-            <div>
-              <div style={{fontSize:"10px",fontWeight:700,color:T.greenDark,textTransform:"uppercase"}}>Wallet Balance</div>
-              <div style={{fontSize:"17px",fontWeight:800,color:T.greenDark}}>₦25,830,000</div>
-            </div>
-            <div style={{fontSize:"12px",fontWeight:800,color:totalValue>25830000?T.red:T.greenDark}}>{totalValue>25830000?"⚠ Insufficient":"✓ Sufficient"}</div>
-          </div>
+          {(()=>{
+            const bal=walletNGN?.balanceNGN??null;
+            const sufficient=bal===null||bal>=totalValue;
+            return (
+              <div style={{background:sufficient?T.greenLight:"#FEF2F2",padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"16px"}}>
+                <div>
+                  <div style={{fontSize:"10px",fontWeight:700,color:sufficient?T.greenDark:T.red,textTransform:"uppercase"}}>Wallet Balance</div>
+                  <div style={{fontSize:"17px",fontWeight:800,color:sufficient?T.greenDark:T.red}}>
+                    {bal!==null?`₦${bal.toLocaleString('en-NG')}`:"—"}
+                  </div>
+                </div>
+                <div style={{fontSize:"12px",fontWeight:800,color:sufficient?T.greenDark:T.red}}>
+                  {bal===null?"Loading…":sufficient?"✓ Sufficient":"⚠ Insufficient funds"}
+                </div>
+              </div>
+            );
+          })()}
 
           <div style={{background:T.gray50,border:`1px solid ${T.gray100}`,padding:"11px 14px",marginBottom:"12px",display:"flex",alignItems:"center",gap:"10px"}}>
             <span style={{fontSize:"16px"}}>{deliveryMode==="delivery"?"🚛":"🏭"}</span>
@@ -884,43 +689,28 @@ function OrderFlow({onDone,isMobile}) {
               <div style={{fontSize:"10px",color:T.gray400}}>{deliveryMode==="delivery"?`${totalTrucks} truck${totalTrucks!==1?"s":""} → ${deliveryLGA}, ${deliveryState}`:`You collect from ${sel.location}`}</div>
             </div>
           </div>
-          <button onClick={()=>{
-            const now=new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
-            const placed=`Today · ${now}`;
-            const orderId=`VTL-00${_nextOrderSeq++}`;
-            const productLabel=enabledProducts.map(([n])=>n).join(" + ");
-            const totalVol=enabledProducts.reduce((s,[,p])=>s+p.vol,0);
-            const pFee=Math.round(totalValue*0.01);
-            const vat=Math.round(pFee*0.18);
-            const newOrder={
-              id:orderId,buyer:"Chukwuma Fuels Ltd",depot:sel.name,
-              product:productLabel,vol:totalVol,value:totalValue,status:"pending",
-              placed,trucks:totalTrucks,progress:0,
-              ...(enabledProducts.length>1?{products:enabledProducts.map(([n])=>n)}:{}),
-              type:"Petrol Station",
-              location:deliveryMode==="delivery"?`${deliveryLGA}, ${deliveryState}`:sel.location,
-              submitted:"Just now",slaLeft:"2h 00m",
-              meta:{
-                buyer:{name:"Emeka Chukwuma",company:"Chukwuma Fuels Ltd",type:"Petrol Station",phone:"+234 801 234 5678",email:"emeka@chukwumafuels.ng",location:deliveryMode==="delivery"?`${deliveryLGA}, ${deliveryState}`:sel.location,rc:"RC-1092843"},
-                depot:{name:sel.name,location:sel.location,contact:"Depot Ops"},
-                delivery:deliveryMode==="delivery"?{mode:"delivery",state:deliveryState,lga:deliveryLGA,address:deliveryAddress}:{mode:"pickup"},
-                ...(enabledProducts.length>1?{products:enabledProducts.map(([n,p])=>({name:n,fullName:n,vol:p.vol,pricePerLitre:p.price,value:p.price*p.vol,trucks:Math.ceil(p.vol/33000)}))}:{product:enabledProducts[0][0],pricePerLitre:enabledProducts[0][1].price}),
-                vol:totalVol,value:totalValue,trucks:totalTrucks,
-                placed,confirmed:null,dispatchDate:null,deliveredDate:null,
-                bay:null,loadingRef:null,slaLeft:"2h 00m",
-                trucks_detail:Array.from({length:totalTrucks},(_,i)=>({id:`T${i+1}`,driver:"TBD",plate:"TBD",vol:33000,departure:"TBD",eta:"TBD",arrivalTime:null,progress:0,status:"pending"})),
-                timeline:[
-                  {time:placed,event:"Order placed by Chukwuma Fuels Ltd",actor:"buyer"},
-                  {time:placed,event:`Payment initiated · ₦${(totalValue/1e6).toFixed(1)}M held in escrow`,actor:"system"},
-                ],
-                financials:{productValue:totalValue,platformFee:pFee,vat,netToDepot:totalValue-pFee,paymentStatus:"pending"},
-              },
-            };
-            _placedOrdersStore.push(newOrder);
-            setSubmittedId(orderId);
-            setDone(true);
-          }} disabled={totalValue>25830000} style={{background:totalValue>25830000?T.gray200:T.green,color:totalValue>25830000?T.gray400:T.white,border:"none",padding:"14px",fontSize:"14px",fontWeight:800,cursor:totalValue>25830000?"not-allowed":"pointer",fontFamily:F,width:"100%",minHeight:"48px"}}>
-            Confirm & Pay ₦{totalValue.toLocaleString()}
+          {submitError&&<div style={{background:T.redLight,border:`1px solid ${T.red}`,padding:"10px 14px",marginBottom:"10px",fontSize:"12px",color:T.red,fontWeight:700}}>{submitError}</div>}
+          <button onClick={async()=>{
+            if(!authUser?.id){setSubmitError("You must be logged in to place an order.");return;}
+            setSubmitting(true);setSubmitError(null);
+            try{
+              const orderId=await ordersApi.create({
+                buyerId:authUser.id,
+                depotId:sel.id,
+                deliveryMode,
+                deliveryState:deliveryMode==="delivery"?deliveryState:null,
+                deliveryLga:deliveryMode==="delivery"?deliveryLGA:null,
+                deliveryAddress:deliveryMode==="delivery"?deliveryAddress:null,
+                pickupNote:deliveryMode==="pickup"?pickupNote:null,
+                items:enabledProducts.map(([name,p])=>({product:name,volume:p.vol,pricePerLitre:p.price})),
+              });
+              await loadBuyerOrders(authUser.id);
+              setSubmittedId(orderId);
+              setDone(true);
+            }catch(e){setSubmitError(e.message);}
+            finally{setSubmitting(false);}
+          }} disabled={submitting} style={{background:submitting?T.gray200:T.green,color:submitting?T.gray400:T.white,border:"none",padding:"14px",fontSize:"14px",fontWeight:800,cursor:submitting?"not-allowed":"pointer",fontFamily:F,width:"100%",minHeight:"48px"}}>
+            {submitting?"Placing Order…":`Confirm & Pay ₦${totalValue.toLocaleString()}`}
           </button>
         </div>
       )}
@@ -934,6 +724,8 @@ function OrderFlow({onDone,isMobile}) {
 ════════════════════════════════════════════ */
 function BuyerDash({onOrder,isMobile}) {
   const col2 = isMobile ? "1fr" : "1fr 1.3fr";
+  const {buyerOrders,priceHistory}=useVentrylStore();
+  const activeOrders=buyerOrders.filter(o=>o.status!=="delivered"&&o.status!=="collected"&&o.status!=="cancelled"&&o.status!=="rejected");
   return (
     <div>
       {/* Hero */}
@@ -965,7 +757,7 @@ function BuyerDash({onOrder,isMobile}) {
           <div style={{padding:"14px 18px",borderBottom:`1px solid ${T.gray100}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div style={{fontSize:"13px",fontWeight:800,color:T.black}}>Active Orders</div>
           </div>
-          {ORDERS.filter(o=>o.status!=="delivered").map((o,i,arr)=>(
+          {activeOrders.map((o,i,arr)=>(
             <div key={o.id} style={{padding:"13px 18px",borderBottom:i<arr.length-1?`1px solid ${T.gray100}`:"none"}}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:"7px",gap:"8px"}}>
                 <div>
@@ -979,7 +771,7 @@ function BuyerDash({onOrder,isMobile}) {
               </div>
               <div style={{display:"flex",justifyContent:"space-between",marginTop:"4px"}}>
                 <span style={{fontSize:"10px",color:T.gray400}}>{o.progress}% done</span>
-                <span style={{fontSize:"10px",color:T.gray400,fontWeight:600}}>₦{(o.value/1e6).toFixed(1)}M</span>
+                <span style={{fontSize:"10px",color:T.gray400,fontWeight:600}}>₦{(o.value||0).toLocaleString('en-NG')}</span>
               </div>
             </div>
           ))}
@@ -997,7 +789,7 @@ function BuyerDash({onOrder,isMobile}) {
             <div style={{background:T.amberLight,color:"#8A5C00",fontSize:"10px",fontWeight:800,padding:"4px 8px"}}>📈 Rising next week</div>
           </div>
           <ResponsiveContainer width="100%" height={isMobile?150:180}>
-            <LineChart data={PRICE_HISTORY} margin={{top:4,right:0,bottom:0,left:-24}}>
+            <LineChart data={priceHistory} margin={{top:4,right:0,bottom:0,left:-24}}>
               <CartesianGrid strokeDasharray="2 4" stroke={T.gray100}/>
               <XAxis dataKey="day" tick={{fill:T.gray400,fontSize:9,fontFamily:F,fontWeight:600}} axisLine={false} tickLine={false}/>
               <YAxis tick={{fill:T.gray400,fontSize:9,fontFamily:F,fontWeight:600}} axisLine={false} tickLine={false} domain={[780,810]}/>
@@ -1017,8 +809,8 @@ function BuyerDash({onOrder,isMobile}) {
       <Card pad={false}>
         <div style={{padding:"14px 18px",borderBottom:`1px solid ${T.gray100}`}}><div style={{fontSize:"13px",fontWeight:800,color:T.black}}>Order History</div></div>
         {isMobile?(
-          ORDERS.map((o,i)=>(
-            <div key={o.id} style={{padding:"14px 18px",borderBottom:i<ORDERS.length-1?`1px solid ${T.gray100}`:"none"}}>
+          buyerOrders.map((o,i)=>(
+            <div key={o.id} style={{padding:"14px 18px",borderBottom:i<buyerOrders.length-1?`1px solid ${T.gray100}`:"none"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"6px"}}>
                 <div>
                   <div style={{fontSize:"12px",fontWeight:800,color:T.black}}>{o.id}</div>
@@ -1028,7 +820,7 @@ function BuyerDash({onOrder,isMobile}) {
               </div>
               <div style={{display:"flex",gap:"16px"}}>
                 <span style={{fontSize:"11px",color:T.gray600,fontWeight:700}}>{(o.vol/1000).toFixed(0)}k L</span>
-                <span style={{fontSize:"11px",fontWeight:800,color:T.black}}>₦{(o.value/1e6).toFixed(1)}M</span>
+                <span style={{fontSize:"11px",fontWeight:800,color:T.black}}>₦{(o.value||0).toLocaleString('en-NG')}</span>
                 <span style={{fontSize:"11px",color:T.gray400}}>{o.placed}</span>
               </div>
             </div>
@@ -1036,13 +828,13 @@ function BuyerDash({onOrder,isMobile}) {
         ):(
           <table style={{width:"100%",borderCollapse:"collapse"}}>
             <thead><tr style={{borderBottom:`1px solid ${T.gray100}`}}>{["Order","Depot","Product","Volume","Value","Placed","Status"].map(h=><th key={h} style={{padding:"9px 18px",fontFamily:F,fontSize:"10px",fontWeight:700,color:T.gray400,textAlign:"left",textTransform:"uppercase",letterSpacing:"0.06em"}}>{h}</th>)}</tr></thead>
-            <tbody>{ORDERS.map((o,i)=>(
-              <tr key={o.id} style={{borderBottom:i<ORDERS.length-1?`1px solid ${T.gray100}`:"none"}}>
+            <tbody>{buyerOrders.map((o,i)=>(
+              <tr key={o.id} style={{borderBottom:i<buyerOrders.length-1?`1px solid ${T.gray100}`:"none"}}>
                 <td style={{padding:"12px 18px",fontFamily:F,fontSize:"12px",fontWeight:800,color:T.black}}>{o.id}</td>
                 <td style={{padding:"12px 18px",fontFamily:F,fontSize:"12px",color:T.gray800}}>{o.depot}</td>
                 <td style={{padding:"12px 18px"}}><span style={{background:T.gray100,color:T.black,fontSize:"10px",fontWeight:800,padding:"3px 7px"}}>{o.product}</span></td>
                 <td style={{padding:"12px 18px",fontFamily:F,fontSize:"12px",color:T.gray600}}>{(o.vol/1000).toFixed(0)}k L</td>
-                <td style={{padding:"12px 18px",fontFamily:F,fontSize:"13px",fontWeight:800,color:T.black}}>₦{(o.value/1e6).toFixed(1)}M</td>
+                <td style={{padding:"12px 18px",fontFamily:F,fontSize:"13px",fontWeight:800,color:T.black}}>₦{(o.value||0).toLocaleString('en-NG')}</td>
                 <td style={{padding:"12px 18px",fontFamily:F,fontSize:"11px",color:T.gray400}}>{o.placed}</td>
                 <td style={{padding:"12px 18px"}}><Badge status={o.status}/></td>
               </tr>
@@ -1058,8 +850,10 @@ function BuyerMarketplace({onOrder,isMobile}) {
   const [sort,setSort]=useState("price");
   const {marketDepots,marketDepotsLoaded,loadMarketDepots}=useVentrylStore();
   useEffect(()=>{if(!marketDepotsLoaded)loadMarketDepots();},[]);
-  const source=marketDepotsLoaded&&marketDepots.length?marketDepots:DEPOTS;
-  const sorted=[...source].filter(d=>d.pms!=null||d.ago!=null).sort((a,b)=>sort==="price"?(a.pms??9999)-(b.pms??9999):sort==="rating"?b.rating-a.rating:b.stock-a.stock);
+  const source=marketDepots||[];
+  const hasAnyPrice=d=>d.pms!=null||d.ago!=null||d.dpk!=null||d.lpg!=null||d.atk!=null;
+  const lowestPrice=d=>Math.min(...[d.pms,d.ago,d.dpk,d.lpg,d.atk].filter(v=>v!=null));
+  const sorted=[...source].filter(hasAnyPrice).sort((a,b)=>sort==="price"?lowestPrice(a)-lowestPrice(b):sort==="rating"?b.rating-a.rating:b.stock-a.stock);
   return (
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px",flexWrap:"wrap",gap:"8px"}}>
@@ -1086,8 +880,9 @@ function BuyerMarketplace({onOrder,isMobile}) {
                   </div>
                 </div>
                 <div style={{textAlign:"right",flexShrink:0}}>
-                  <div style={{fontSize:"18px",fontWeight:800,color:i===0&&sort==="price"?T.green:T.black}}>₦{d.pms}/L</div>
-                  {d.ago&&<div style={{fontSize:"10px",color:T.gray400}}>AGO ₦{d.ago.toLocaleString()}</div>}
+                  {[["PMS",d.pms],["AGO",d.ago],["DPK",d.dpk],["LPG",d.lpg],["ATK",d.atk]].filter(([,v])=>v!=null).map(([label,price],pi)=>(
+                    <div key={label} style={{fontSize:pi===0?"18px":"10px",fontWeight:pi===0?800:600,color:pi===0?(i===0&&sort==="price"?T.green:T.black):T.gray400}}>{pi===0?`₦${price.toLocaleString()}`:`${label} ₦${price.toLocaleString()}`}</div>
+                  ))}
                 </div>
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:"10px"}}>
@@ -1109,8 +904,9 @@ function BuyerMarketplace({onOrder,isMobile}) {
                 <div style={{fontSize:"11px",color:T.gray400}}>{d.location} · ★{d.rating} ({d.orders} orders) · {d.slots} slots · ETA {d.eta}</div>
               </div>
               <div style={{display:"flex",gap:"16px",alignItems:"center"}}>
-                <div style={{textAlign:"center"}}><div style={{fontSize:"9px",fontWeight:700,color:T.gray400,textTransform:"uppercase",marginBottom:"2px"}}>PMS</div><div style={{fontSize:"18px",fontWeight:800,color:T.black}}>₦{d.pms}</div></div>
-                {d.ago&&<div style={{textAlign:"center"}}><div style={{fontSize:"9px",fontWeight:700,color:T.gray400,textTransform:"uppercase",marginBottom:"2px"}}>AGO</div><div style={{fontSize:"18px",fontWeight:800,color:T.black}}>₦{d.ago.toLocaleString()}</div></div>}
+                {[["PMS",d.pms],["AGO",d.ago],["DPK",d.dpk],["LPG",d.lpg],["ATK",d.atk]].filter(([,v])=>v!=null).map(([label,price])=>(
+                  <div key={label} style={{textAlign:"center"}}><div style={{fontSize:"9px",fontWeight:700,color:T.gray400,textTransform:"uppercase",marginBottom:"2px"}}>{label}</div><div style={{fontSize:"18px",fontWeight:800,color:T.black}}>₦{price.toLocaleString()}</div></div>
+                ))}
                 <div>
                   <div style={{fontSize:"9px",fontWeight:700,color:T.gray400,textTransform:"uppercase",marginBottom:"4px"}}>Stock</div>
                   <div style={{height:"4px",background:T.gray100,borderRadius:"2px",overflow:"hidden",width:"70px"}}><div style={{height:"100%",width:`${Math.round(d.stock/d.cap*100)}%`,background:T.green}}/></div>
@@ -1128,7 +924,7 @@ function BuyerMarketplace({onOrder,isMobile}) {
 
 function BuyerWallet({isMobile}) {
   const {user:authUser,profile:authProfile}=useAuthStore();
-  const {walletNGN,loadWallet}=useVentrylStore();
+  const {walletNGN,loadWallet,buyerOrders}=useVentrylStore();
   useEffect(()=>{if(authUser?.id)loadWallet(authUser.id);},[authUser?.id]);
   const [currency,setCurrency]=useState("NGN");
   const [showFund,setShowFund]=useState(false);
@@ -1215,13 +1011,13 @@ function BuyerWallet({isMobile}) {
           {/* Active orders summary */}
           <div>
             <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",marginBottom:"10px"}}>Active Orders</div>
-            {ORDERS.filter(o=>o.status!=="delivered").map(o=>(
+            {buyerOrders.filter(o=>o.status!=="delivered"&&o.status!=="collected"&&o.status!=="cancelled"&&o.status!=="rejected").map(o=>(
               <div key={o.id} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #1A1A1A",fontSize:"12px"}}>
                 <div><span style={{color:T.white,fontWeight:700}}>{o.id}</span><span style={{color:T.gray400,marginLeft:"6px"}}>{o.product}</span></div>
                 <Badge status={o.status}/>
               </div>
             ))}
-            {ORDERS.filter(o=>o.status!=="delivered").length===0&&<div style={{fontSize:"12px",color:"#555"}}>No active orders</div>}
+            {buyerOrders.filter(o=>o.status!=="delivered"&&o.status!=="collected"&&o.status!=="cancelled"&&o.status!=="rejected").length===0&&<div style={{fontSize:"12px",color:"#555"}}>No active orders</div>}
           </div>
         </div>
       </div>
@@ -1422,7 +1218,7 @@ function DepotDash({isMobile}) {
         <Card>
           <SectionHead title="Revenue Trend" sub="₦ Millions · 6 months"/>
           <ResponsiveContainer width="100%" height={isMobile?150:170}>
-            <AreaChart data={REVENUE_DATA} margin={{top:4,right:0,bottom:0,left:-24}}>
+            <AreaChart data={[]} margin={{top:4,right:0,bottom:0,left:-24}}>
               <defs><linearGradient id="rg" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={T.green} stopOpacity={0.15}/><stop offset="95%" stopColor={T.green} stopOpacity={0}/></linearGradient></defs>
               <CartesianGrid strokeDasharray="2 4" stroke={T.gray100}/>
               <XAxis dataKey="month" tick={{fill:T.gray400,fontSize:10,fontFamily:F,fontWeight:600}} axisLine={false} tickLine={false}/>
@@ -1435,7 +1231,7 @@ function DepotDash({isMobile}) {
         <Card>
           <SectionHead title="Orders by Day" sub="This week"/>
           <ResponsiveContainer width="100%" height={isMobile?150:170}>
-            <BarChart data={DAILY} barSize={7} margin={{left:-24,bottom:0}}>
+            <BarChart data={[]} barSize={7} margin={{left:-24,bottom:0}}>
               <CartesianGrid strokeDasharray="2 4" stroke={T.gray100} vertical={false}/>
               <XAxis dataKey="day" tick={{fill:T.gray400,fontSize:10,fontFamily:F,fontWeight:600}} axisLine={false} tickLine={false}/>
               <Tooltip content={<ChartTip/>}/>
@@ -1450,93 +1246,85 @@ function DepotDash({isMobile}) {
 }
 
 function DepotInbox({depotId,isMobile,onViewOrder}) {
-  // Merge buyer-placed orders (newest first) with static INCOMING
-  const [liveOrders,setLiveOrders]=useState([]);
   const {depotOrders,loadDepotOrders}=useVentrylStore();
-  useEffect(()=>{if(depotId)loadDepotOrders(depotId);},[depotId]);
-  const dbOrders=depotOrders[depotId]||[];
-  const ALL_INCOMING=[...liveOrders,..._placedOrdersStore.slice().reverse(),...dbOrders.filter(o=>!liveOrders.find(l=>l.id===o.id)&&!_placedOrdersStore.find(p=>p.id===o.id))];
-
-  // Realtime: new orders for this depot
-  useDepotInboxRealtime(depotId,(payload)=>{
-    if(payload.eventType==="INSERT"&&payload.new){
-      const o=payload.new;
-      // Normalize to local shape
-      setLiveOrders(prev=>[{
-        id:o.id,
-        buyer:o.buyer_name||"New Buyer",
-        product:o.product||"PMS",
-        vol:o.vol_litres||0,
-        value:o.total_value||0,
-        trucks:o.truck_count||1,
-        status:o.status||"pending",
-        location:o.delivery_address||"Lagos",
-        type:o.delivery_type||"delivery",
-        submitted:"Just now",
-        slaLeft:"3h 00m",
-        depot:"",
-      },...prev]);
-    }
-  });
-
-  const [acted,setActed]=useState(()=>{
-    const a={};
-    ALL_INCOMING.forEach(o=>{
-      const s=_orderStatusStore[o.id];
-      if(s==="confirmed")a[o.id]="confirm";
-      else if(s==="rejected")a[o.id]="reject";
-    });
-    return a;
-  });
-  const [bays,setBays]=useState(()=>({..._orderBayStore}));
+  const {user:authUser}=useAuthStore();
+  const [acting,setActing]=useState({}); // orderId -> 'confirming'|'rejecting'
+  const [bayAssigning,setBayAssigning]=useState({}); // orderId -> true
+  const [inboxError,setInboxError]=useState(null);
   const BAYS=["Bay 1","Bay 2","Bay 3"];
 
-  // Active dispatches — per-truck detail
-  const DISPATCHES=[
-    {id:"VTL-00841",buyer:"Chukwuma Fuels Ltd",product:"PMS",vol:90000,stage:"in_transit",bay:"Bay 1",loadRef:"LOAD-2026-031",
-     trucks:[
-       {n:1,driver:"Emeka Nwosu",plate:"LSD-481-KJ",vol:33000,departure:"08:45",eta:"13:30",progress:72,status:"in_transit"},
-       {n:2,driver:"Bayo Adeyemi",plate:"LSD-219-AB",vol:33000,departure:"08:50",eta:"13:45",progress:68,status:"in_transit"},
-       {n:3,driver:"Chidi Okonkwo",plate:"LSD-774-QR",vol:24000,departure:"09:00",eta:"14:00",progress:60,status:"in_transit"},
-     ]},
-    {id:"VTL-00839",buyer:"Silvergate Energy",product:"PMS",vol:132000,stage:"loading",bay:"Bay 2",loadRef:"LOAD-2026-029",
-     trucks:[
-       {n:1,driver:"Seun Obi",plate:"LSD-302-MK",vol:33000,departure:"11:00",eta:"16:30",progress:100,status:"loaded"},
-       {n:2,driver:"Kunle Fashola",plate:"LSD-518-GH",vol:33000,departure:"11:00",eta:"16:30",progress:85,status:"loading"},
-       {n:3,driver:"Tunde Bello",plate:"LSD-091-XB",vol:33000,departure:"11:00",eta:"16:30",progress:60,status:"loading"},
-       {n:4,driver:"Emeka Eze",plate:"LSD-437-NP",vol:33000,departure:"11:00",eta:"16:30",progress:20,status:"loading"},
-     ]},
-  ];
+  useEffect(()=>{if(depotId)loadDepotOrders(depotId);},[depotId]);
 
-  const [truckStatus,setTruckStatus]=useState(()=>{
-    const s={};
-    DISPATCHES.forEach(d=>d.trucks.forEach(t=>{s[`${d.id}-${t.n}`]=t.status;}));
-    return s;
-  });
+  // Realtime: reload on any order insert/update for this depot
+  useDepotInboxRealtime(depotId,()=>{loadDepotOrders(depotId);});
 
-  const markTruckDelivered=(orderId,truckN)=>setTruckStatus(s=>({...s,[`${orderId}-${truckN}`]:"delivered"}));
-  const allDelivered=(d)=>d.trucks.every(t=>truckStatus[`${d.id}-${t.n}`]==="delivered");
+  const orders=depotOrders[depotId]||[];
+  const pending=orders.filter(o=>o.status==="pending");
+  const active=orders.filter(o=>["confirmed","loading","in_transit"].includes(o.status));
+  const completed=orders.filter(o=>["delivered","collected"].includes(o.status)).slice(0,5);
+
+  const handleConfirm=async(orderId)=>{
+    setActing(a=>({...a,[orderId]:"confirming"}));
+    setInboxError(null);
+    try{
+      await ordersApi.updateStatus(orderId,"confirmed",{actorId:authUser?.id,note:"Order confirmed by depot"});
+      loadDepotOrders(depotId);
+    }catch(e){setInboxError(e.message);}
+    finally{setActing(a=>{const n={...a};delete n[orderId];return n;});}
+  };
+
+  const handleReject=async(orderId)=>{
+    setActing(a=>({...a,[orderId]:"rejecting"}));
+    setInboxError(null);
+    try{
+      await ordersApi.updateStatus(orderId,"rejected",{actorId:authUser?.id,note:"Order rejected by depot"});
+      loadDepotOrders(depotId);
+    }catch(e){setInboxError(e.message);}
+    finally{setActing(a=>{const n={...a};delete n[orderId];return n;});}
+  };
+
+  const handleAssignBay=async(orderId,bay)=>{
+    const loadingRef=`LOAD-${new Date().getFullYear()}-${String(Math.floor(Math.random()*900)+100).padStart(3,"0")}`;
+    setBayAssigning(b=>({...b,[orderId]:true}));
+    setInboxError(null);
+    try{
+      await ordersApi.assignBay(orderId,bay,loadingRef,authUser?.id);
+      loadDepotOrders(depotId);
+    }catch(e){setInboxError(e.message);}
+    finally{setBayAssigning(b=>{const n={...b};delete n[orderId];return n;});}
+  };
 
   return (
     <div>
+      {inboxError&&(
+        <div style={{background:T.redLight,border:`1px solid ${T.red}`,padding:"10px 14px",marginBottom:"14px",fontSize:"12px",color:T.red,fontWeight:600}}>
+          {inboxError}
+        </div>
+      )}
+
       {/* ── INCOMING ORDERS ── */}
       <div style={{marginBottom:"24px"}}>
         <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"14px"}}>
           <div style={{fontSize:"14px",fontWeight:800,color:T.black}}>Incoming Orders</div>
-          {ALL_INCOMING.filter(o=>o.status==="pending"&&!acted[o.id]).length>0&&(
+          {pending.length>0&&(
             <div style={{background:T.red,color:T.white,fontSize:"10px",fontWeight:800,padding:"2px 8px"}}>
-              {ALL_INCOMING.filter(o=>o.status==="pending"&&!acted[o.id]).length} ACTION REQUIRED
+              {pending.length} ACTION REQUIRED
             </div>
           )}
         </div>
-        {ALL_INCOMING.filter(o=>o.status==="pending").map(o=>{
-          const confirmed=acted[o.id]==="confirm";
-          const rejected=acted[o.id]==="reject";
-          const assignedBay=bays[o.id];
+
+        {pending.length===0&&(
+          <div style={{border:`1px dashed ${T.gray200}`,padding:"32px",textAlign:"center",marginBottom:"8px"}}>
+            <div style={{fontSize:"13px",fontWeight:700,color:T.gray400}}>No pending orders</div>
+            <div style={{fontSize:"11px",color:T.gray400,marginTop:"4px"}}>New orders appear here in real time.</div>
+          </div>
+        )}
+
+        {pending.map(o=>{
+          const isActing=acting[o.id];
           return (
-            <div key={o.id} style={{border:`2px solid ${confirmed?T.green:rejected?T.red:T.amber}`,background:T.white,marginBottom:"12px"}}>
-              {/* NEW ribbon */}
-              {!acted[o.id]&&<div style={{background:T.red,color:T.white,fontSize:"9px",fontWeight:800,padding:"3px 10px",letterSpacing:"0.06em",display:"inline-block"}}>NEW</div>}
+            <div key={o.id} style={{border:`2px solid ${T.amber}`,background:T.white,marginBottom:"12px"}}>
+              <div style={{background:T.red,color:T.white,fontSize:"9px",fontWeight:800,padding:"3px 10px",letterSpacing:"0.06em",display:"inline-block"}}>NEW</div>
               <div style={{padding:"14px 16px"}}>
                 <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:"10px",gap:"10px",flexWrap:isMobile?"wrap":"nowrap"}}>
                   <div>
@@ -1548,17 +1336,11 @@ function DepotInbox({depotId,isMobile,onViewOrder}) {
                     <div style={{fontSize:"11px",color:T.gray400}}>{o.location} · {o.submitted}</div>
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:"8px 18px",flexShrink:0}}>
-                    {[["Product",null],["Volume",`${(o.vol/1000).toFixed(0)}k L`],["Trucks",o.trucks],["Value",`₦${(o.value/1e6).toFixed(1)}M`]].map(([l,v])=>(
+                    {[["Product",null],["Volume",`${(o.vol/1000).toFixed(0)}k L`],["Trucks",o.trucks],["Value",`₦${(o.value||0).toLocaleString('en-NG')}`]].map(([l,v])=>(
                       <div key={l}>
                         <div style={{fontSize:"9px",fontWeight:700,color:T.gray400,textTransform:"uppercase",marginBottom:"1px"}}>{l}</div>
                         {l==="Product"?(
-                          o.products?(
-                            <div style={{display:"flex",gap:"4px",flexWrap:"wrap",marginTop:"2px"}}>
-                              {o.products.map(p=><span key={p} style={{background:T.black,color:T.white,fontSize:"10px",fontWeight:800,padding:"2px 6px"}}>{p}</span>)}
-                            </div>
-                          ):(
-                            <div style={{fontSize:"14px",fontWeight:800,color:T.black}}>{o.product}</div>
-                          )
+                          <div style={{fontSize:"14px",fontWeight:800,color:T.black}}>{o.product}</div>
                         ):(
                           <div style={{fontSize:"14px",fontWeight:800,color:T.black}}>{v}</div>
                         )}
@@ -1566,219 +1348,164 @@ function DepotInbox({depotId,isMobile,onViewOrder}) {
                     ))}
                   </div>
                 </div>
-
-                {/* After confirm — Bay Assignment inline */}
-                {confirmed&&!assignedBay&&(
-                  <div style={{background:T.greenLight,border:`1px solid ${T.green}`,padding:"10px 12px",marginTop:"8px"}}>
-                    <div style={{fontSize:"11px",fontWeight:800,color:T.greenDark,marginBottom:"8px"}}>✓ Confirmed — Assign a loading bay to continue</div>
-                    <div style={{display:"flex",gap:"6px",flexWrap:"wrap"}}>
-                      {BAYS.map(b=>(
-                        <button key={b} onClick={()=>{_orderBayStore[o.id]=b;setBays(bv=>({...bv,[o.id]:b}));}} style={{background:T.black,color:T.white,border:"none",padding:"7px 12px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"34px"}}>{b}</button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {confirmed&&assignedBay&&(
-                  <div style={{background:T.greenLight,padding:"8px 12px",marginTop:"8px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:"8px",flexWrap:"wrap"}}>
-                    <span style={{fontSize:"11px",fontWeight:800,color:T.greenDark}}>✓ Confirmed · {assignedBay} Assigned</span>
-                    <button onClick={()=>onViewOrder&&onViewOrder(o.id)} style={{background:T.black,color:T.white,border:"none",padding:"6px 12px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"32px"}}>Manage Order →</button>
-                  </div>
-                )}
-                {rejected&&(
-                  <div style={{background:T.redLight,padding:"8px 12px",marginTop:"8px"}}>
-                    <span style={{fontSize:"11px",fontWeight:800,color:T.red}}>✗ Rejected — Payment returned to buyer</span>
-                  </div>
-                )}
               </div>
-
-              {/* Footer */}
               <div style={{borderTop:`1px solid ${T.gray100}`,padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"8px",background:T.gray50}}>
                 <span style={{fontSize:"11px",fontWeight:800,color:"#8A5C00",background:T.amberLight,padding:"3px 8px"}}>⏱ SLA: {o.slaLeft}</span>
-                {!acted[o.id]?(
-                  <div style={{display:"flex",gap:"8px"}}>
-                    <button onClick={()=>{_orderStatusStore[o.id]="rejected";setActed(a=>({...a,[o.id]:"reject"}));}} style={{background:T.white,color:T.red,border:`1px solid ${T.red}`,padding:"8px 16px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"38px"}}>Reject</button>
-                    <button onClick={()=>{_orderStatusStore[o.id]="confirmed";setActed(a=>({...a,[o.id]:"confirm"}));}} style={{background:T.green,color:T.white,border:"none",padding:"8px 16px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"38px"}}>Confirm →</button>
-                  </div>
-                ):(
-                  <button onClick={()=>onViewOrder&&onViewOrder(o.id)} style={{background:"none",border:`1px solid ${T.gray200}`,color:T.black,padding:"7px 12px",fontSize:"11px",fontWeight:700,cursor:"pointer",fontFamily:F,minHeight:"34px"}}>View Details →</button>
-                )}
+                <div style={{display:"flex",gap:"8px"}}>
+                  <button disabled={!!isActing} onClick={()=>handleReject(o.id)}
+                    style={{background:T.white,color:T.red,border:`1px solid ${T.red}`,padding:"8px 16px",fontSize:"11px",fontWeight:800,cursor:isActing?"not-allowed":"pointer",fontFamily:F,minHeight:"38px",opacity:isActing?0.6:1}}>
+                    {isActing==="rejecting"?"Rejecting…":"Reject"}
+                  </button>
+                  <button disabled={!!isActing} onClick={()=>handleConfirm(o.id)}
+                    style={{background:T.green,color:T.white,border:"none",padding:"8px 16px",fontSize:"11px",fontWeight:800,cursor:isActing?"not-allowed":"pointer",fontFamily:F,minHeight:"38px",opacity:isActing?0.6:1}}>
+                    {isActing==="confirming"?"Confirming…":"Confirm →"}
+                  </button>
+                </div>
               </div>
             </div>
           );
         })}
-        {ALL_INCOMING.filter(o=>o.status==="confirmed").map(o=>(
-          <div key={o.id} style={{border:`1px solid ${T.gray100}`,background:T.white,padding:"12px 16px",marginBottom:"8px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:"10px",flexWrap:"wrap"}}>
-            <div>
-              <div style={{display:"flex",alignItems:"center",gap:"7px",marginBottom:"2px"}}>
-                <button onClick={()=>onViewOrder&&onViewOrder(o.id)} style={{background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:F,fontSize:"12px",fontWeight:800,color:T.black,textDecoration:"underline"}}>{o.id}</button>
-                <Badge status="confirmed"/>
-              </div>
-              <div style={{fontSize:"11px",color:T.gray400}}>{o.buyer} · {o.products?o.products.join(" + "):o.product} · {(o.vol/1000).toFixed(0)}k L</div>
-            </div>
-            <button onClick={()=>onViewOrder&&onViewOrder(o.id)} style={{background:T.black,color:T.white,border:"none",padding:"7px 14px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"34px"}}>Manage →</button>
-          </div>
-        ))}
       </div>
 
-      {/* ── ACTIVE DISPATCHES ── */}
+      {/* ── ACTIVE ORDERS ── */}
       <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"14px"}}>
-        <div style={{fontSize:"14px",fontWeight:800,color:T.black}}>Active Dispatches</div>
-        <div style={{background:T.blueLight,color:T.blue,fontSize:"10px",fontWeight:800,padding:"2px 8px"}}>{DISPATCHES.length} orders</div>
+        <div style={{fontSize:"14px",fontWeight:800,color:T.black}}>Active Orders</div>
+        {active.length>0&&<div style={{background:T.blueLight,color:T.blue,fontSize:"10px",fontWeight:800,padding:"2px 8px"}}>{active.length} orders</div>}
       </div>
-      {DISPATCHES.map(d=>(
-        <Card key={d.id} pad={false} style={{marginBottom:"14px"}}>
-          {/* Dispatch header */}
-          <div style={{padding:"14px 16px",borderBottom:`1px solid ${T.gray100}`,display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:"8px"}}>
-            <div>
-              <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"3px"}}>
-                <button onClick={()=>onViewOrder&&onViewOrder(d.id)} style={{background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:F,fontSize:"13px",fontWeight:800,color:T.black,textDecoration:"underline"}}>{d.id}</button>
-                <Badge status={allDelivered(d)?"delivered":d.stage}/>
-              </div>
-              <div style={{fontSize:"11px",color:T.gray400}}>{d.buyer} · {d.product} · {(d.vol/1000).toFixed(0)}k L · {d.trucks.length} trucks · {d.bay}</div>
-            </div>
-            <div style={{textAlign:"right"}}>
-              <div style={{fontSize:"11px",fontWeight:700,color:T.black}}>Ref: {d.loadRef}</div>
-              <div style={{fontSize:"10px",color:d.stage==="in_transit"?T.blue:T.amber,fontWeight:700,marginTop:"2px"}}>{d.stage==="in_transit"?"En Route":"Loading"}</div>
-            </div>
-          </div>
 
-          {/* Overall progress */}
-          <div style={{padding:"10px 16px",borderBottom:`1px solid ${T.gray100}`,background:T.gray50}}>
-            {(() => {
-              const delivered=d.trucks.filter(t=>truckStatus[`${d.id}-${t.n}`]==="delivered").length;
-              const total=d.trucks.length;
-              const pct=Math.round((delivered/total)*100);
-              return (
-                <div>
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:"5px"}}>
-                    <span style={{fontSize:"11px",fontWeight:700,color:T.black}}>{delivered}/{total} trucks delivered</span>
-                    <span style={{fontSize:"11px",fontWeight:800,color:T.black}}>{pct}%</span>
-                  </div>
-                  <div style={{height:"6px",background:T.gray200,borderRadius:"3px",overflow:"hidden"}}>
-                    <div style={{height:"100%",width:`${pct}%`,background:pct===100?T.green:T.blue,borderRadius:"3px",transition:"width 0.4s"}}/>
-                  </div>
-                  {allDelivered(d)&&(
-                    <div style={{marginTop:"8px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"6px"}}>
-                      <span style={{fontSize:"11px",fontWeight:800,color:T.greenDark}}>✓ All trucks delivered</span>
-                      <button style={{background:T.green,color:T.white,border:"none",padding:"6px 12px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"32px"}}>Mark Order Complete →</button>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-
-          {/* Per-truck rows */}
-          {d.trucks.map((t,i)=>{
-            const tKey=`${d.id}-${t.n}`;
-            const tStatus=truckStatus[tKey]||t.status;
-            const isDelivered=tStatus==="delivered";
-            return (
-              <div key={t.n} style={{padding:"12px 16px",borderBottom:i<d.trucks.length-1?`1px solid ${T.gray100}`:"none",display:"flex",alignItems:"center",gap:"12px",flexWrap:isMobile?"wrap":"nowrap"}}>
-                {/* Truck icon */}
-                <div style={{width:"36px",height:"36px",background:isDelivered?T.greenLight:tStatus==="loaded"?T.amberLight:T.blueLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"16px",flexShrink:0}}>
-                  🚛
-                </div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"2px",flexWrap:"wrap"}}>
-                    <span style={{fontSize:"12px",fontWeight:800,color:T.black}}>Truck {t.n}</span>
-                    <Badge status={isDelivered?"delivered":tStatus==="loaded"?"confirmed":tStatus}/>
-                    <span style={{fontSize:"10px",color:T.gray400}}>{t.plate}</span>
-                  </div>
-                  <div style={{fontSize:"11px",color:T.gray600,fontWeight:600}}>{t.driver}</div>
-                  {d.stage==="in_transit"&&!isDelivered&&(
-                    <div style={{marginTop:"6px"}}>
-                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:"3px"}}>
-                        <span style={{fontSize:"10px",color:T.gray400}}>Departed {t.departure} · ETA {t.eta}</span>
-                        <span style={{fontSize:"10px",fontWeight:700,color:T.black}}>{t.progress}%</span>
-                      </div>
-                      <div style={{height:"4px",background:T.gray100,borderRadius:"2px",overflow:"hidden"}}>
-                        <div style={{height:"100%",width:`${t.progress}%`,background:T.blue,borderRadius:"2px"}}/>
-                      </div>
-                    </div>
-                  )}
-                  {tStatus==="loaded"&&<div style={{fontSize:"10px",color:"#8A5C00",marginTop:"3px",fontWeight:700}}>Loaded · Ready to depart</div>}
-                </div>
-                <div style={{flexShrink:0}}>
-                  {isDelivered?(
-                    <span style={{fontSize:"11px",fontWeight:800,color:T.greenDark}}>✓ Delivered</span>
-                  ):d.stage==="in_transit"?(
-                    <button onClick={()=>markTruckDelivered(d.id,t.n)} style={{background:T.green,color:T.white,border:"none",padding:"7px 12px",fontSize:"10px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"34px",whiteSpace:"nowrap"}}>Mark Delivered</button>
-                  ):tStatus==="loaded"?(
-                    <span style={{fontSize:"10px",fontWeight:800,color:"#8A5C00"}}>Ready</span>
-                  ):(
-                    <span style={{fontSize:"10px",color:T.gray400}}>Loading…</span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </Card>
-      ))}
-
-      {DISPATCHES.length===0&&(
+      {active.length===0?(
         <div style={{border:`1px dashed ${T.gray200}`,padding:"32px",textAlign:"center"}}>
-          <div style={{fontSize:"13px",fontWeight:700,color:T.gray400}}>No active dispatches</div>
-          <div style={{fontSize:"11px",color:T.gray400,marginTop:"4px"}}>Confirmed and dispatched orders will appear here.</div>
+          <div style={{fontSize:"13px",fontWeight:700,color:T.gray400}}>No active orders</div>
+          <div style={{fontSize:"11px",color:T.gray400,marginTop:"4px"}}>Confirmed and dispatched orders appear here.</div>
+        </div>
+      ):active.map(o=>{
+        const raw=o._raw||{};
+        const isBayAssigning=bayAssigning[o.id];
+        return (
+          <Card key={o.id} pad={false} style={{marginBottom:"12px"}}>
+            <div style={{padding:"14px 16px",borderBottom:o.status==="confirmed"&&!raw.bay_assigned?`1px solid ${T.gray100}`:"none",display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:"8px"}}>
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"3px"}}>
+                  <button onClick={()=>onViewOrder&&onViewOrder(o.id)} style={{background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:F,fontSize:"13px",fontWeight:800,color:T.black,textDecoration:"underline"}}>{o.id}</button>
+                  <Badge status={o.status}/>
+                </div>
+                <div style={{fontSize:"11px",color:T.gray400,marginBottom:"2px"}}>{o.buyer} · {o.product} · {(o.vol/1000).toFixed(0)}k L · {o.trucks} trucks</div>
+                {raw.bay_assigned&&<div style={{fontSize:"11px",fontWeight:700,color:T.black}}>{raw.bay_assigned}{raw.loading_ref?` · Ref: ${raw.loading_ref}`:""}</div>}
+              </div>
+              <button onClick={()=>onViewOrder&&onViewOrder(o.id)} style={{background:T.black,color:T.white,border:"none",padding:"7px 14px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"34px"}}>Manage →</button>
+            </div>
+
+            {/* Bay assignment — only for confirmed orders without a bay yet */}
+            {o.status==="confirmed"&&!raw.bay_assigned&&(
+              <div style={{background:T.greenLight,padding:"10px 14px"}}>
+                <div style={{fontSize:"11px",fontWeight:800,color:T.greenDark,marginBottom:"8px"}}>✓ Confirmed — Assign a loading bay to continue</div>
+                <div style={{display:"flex",gap:"6px",flexWrap:"wrap"}}>
+                  {BAYS.map(b=>(
+                    <button key={b} disabled={!!isBayAssigning} onClick={()=>handleAssignBay(o.id,b)}
+                      style={{background:T.black,color:T.white,border:"none",padding:"7px 12px",fontSize:"11px",fontWeight:800,cursor:isBayAssigning?"not-allowed":"pointer",fontFamily:F,minHeight:"34px",opacity:isBayAssigning?0.6:1}}>{b}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </Card>
+        );
+      })}
+
+      {/* ── RECENTLY COMPLETED ── */}
+      {completed.length>0&&(
+        <div style={{marginTop:"24px"}}>
+          <div style={{fontSize:"14px",fontWeight:800,color:T.black,marginBottom:"14px"}}>Recently Completed</div>
+          {completed.map(o=>(
+            <div key={o.id} style={{border:`1px solid ${T.gray100}`,background:T.white,padding:"12px 16px",marginBottom:"8px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:"10px",flexWrap:"wrap"}}>
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:"7px",marginBottom:"2px"}}>
+                  <button onClick={()=>onViewOrder&&onViewOrder(o.id)} style={{background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:F,fontSize:"12px",fontWeight:800,color:T.black,textDecoration:"underline"}}>{o.id}</button>
+                  <Badge status={o.status}/>
+                </div>
+                <div style={{fontSize:"11px",color:T.gray400}}>{o.buyer} · {o.product} · {(o.vol/1000).toFixed(0)}k L</div>
+              </div>
+              <button onClick={()=>onViewOrder&&onViewOrder(o.id)} style={{background:"none",border:`1px solid ${T.gray200}`,color:T.black,padding:"6px 12px",fontSize:"11px",fontWeight:700,cursor:"pointer",fontFamily:F,minHeight:"32px"}}>View →</button>
+            </div>
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-function TruckSched({isMobile}) {
+function TruckSched({depot,isMobile}) {
+  const {depotOrders,loadDepotOrders}=useVentrylStore();
+  useEffect(()=>{if(depot?.id)loadDepotOrders(depot.id);},[depot?.id]);
+  const orders=(depotOrders[depot?.id]||[]).filter(o=>["confirmed","loading","in_transit"].includes(o.status));
+
+  // Build bay schedule: one row per active order that has a bay_assigned
+  const slots=orders.map(o=>({
+    order:o.id,
+    bay:o._raw?.bay_assigned||"Pending Bay",
+    product:o.product,
+    trucks:o.trucks||0,
+    status:o.status,
+    buyer:o.buyer,
+  }));
+  const bays=["Bay 1","Bay 2","Bay 3"];
+  const bayUtil=bays.map(b=>({
+    bay:b,
+    count:slots.filter(s=>s.bay===b).length,
+  }));
+
+  if(slots.length===0) return (
+    <div>
+      <SectionHead title="Loading Bay Schedule" sub={depot?.name||"Depot"}/>
+      <div style={{textAlign:"center",padding:"40px 0",color:T.gray400,fontSize:"13px",fontWeight:600}}>
+        No active orders in bay at this time.
+      </div>
+    </div>
+  );
+
   return (
     <div>
-      <SectionHead title="Loading Bay Schedule" sub="Tue 10 Mar 2026 · Apapa Depot"
-        right={<div style={{display:"flex",gap:"6px"}}>
-          {["← Prev","Next →"].map(b=><button key={b} style={{background:T.white,border:`1px solid ${T.gray200}`,color:T.black,padding:"6px 10px",fontSize:"11px",fontWeight:700,cursor:"pointer",fontFamily:F,borderRadius:"4px",minHeight:"36px"}}>{b}</button>)}
-        </div>}/>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px",marginBottom:"14px"}}>
-        {["Bay 1","Bay 2"].map(bay=>{
-          const bs=SLOTS.filter(s=>s.bay===bay),booked=bs.filter(s=>s.status!=="open").length;
-          return (<Card key={bay}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:"8px"}}>
-              <div style={{fontSize:"13px",fontWeight:800,color:T.black}}>{bay}</div>
-              <div style={{fontSize:"11px",fontWeight:700,color:T.gray400}}>{booked}/{bs.length}</div>
+      <SectionHead title="Loading Bay Schedule" sub={depot?.name||"Depot"}/>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"12px",marginBottom:"14px"}}>
+        {bayUtil.map(({bay,count})=>(
+          <Card key={bay}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:"6px"}}>
+              <div style={{fontSize:"12px",fontWeight:800,color:T.black}}>{bay}</div>
+              <div style={{fontSize:"11px",fontWeight:700,color:T.gray400}}>{count} active</div>
             </div>
-            <div style={{height:"5px",background:T.gray100,borderRadius:"3px",overflow:"hidden"}}><div style={{height:"100%",width:`${booked/bs.length*100}%`,background:T.green}}/></div>
-            <div style={{fontSize:"10px",color:T.gray400,marginTop:"4px"}}>{Math.round(booked/bs.length*100)}% utilised</div>
-          </Card>);
-        })}
+            <div style={{height:"5px",background:T.gray100,borderRadius:"3px",overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${Math.min(count/2*100,100)}%`,background:count>0?T.green:T.gray200}}/>
+            </div>
+            <div style={{fontSize:"10px",color:T.gray400,marginTop:"4px"}}>{count===0?"Available":"In use"}</div>
+          </Card>
+        ))}
       </div>
       {isMobile?(
         <div>
-          {SLOTS.map((s,i)=>(
-            <div key={i} style={{border:`1px solid ${T.gray100}`,background:s.status==="open"?`${T.green}08`:T.white,padding:"14px 16px",marginBottom:"8px"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"8px"}}>
+          {slots.map((s,i)=>(
+            <div key={i} style={{border:`1px solid ${T.gray100}`,background:T.white,padding:"14px 16px",marginBottom:"8px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"6px"}}>
                 <div>
-                  <div style={{fontSize:"13px",fontWeight:800,color:T.black}}>{s.time} · {s.bay}</div>
-                  <div style={{fontSize:"11px",color:T.gray400,marginTop:"2px"}}>{s.order} {s.product!=="—"?`· ${s.product}`:""}{s.trucks?` · ${s.trucks} 🚛`:""}</div>
+                  <div style={{fontSize:"13px",fontWeight:800,color:T.black}}>{s.bay}</div>
+                  <div style={{fontSize:"11px",color:T.gray400,marginTop:"2px"}}>{s.order} · {s.buyer} · {s.product}</div>
                 </div>
                 <Badge status={s.status}/>
               </div>
-              {s.status==="open"&&<button style={{background:T.black,color:T.white,border:"none",padding:"7px 14px",fontSize:"11px",fontWeight:700,cursor:"pointer",fontFamily:F,width:"100%",minHeight:"40px"}}>Assign Order</button>}
-              {s.status==="loading"&&<button style={{background:T.green,color:T.white,border:"none",padding:"7px 14px",fontSize:"11px",fontWeight:700,cursor:"pointer",fontFamily:F,width:"100%",minHeight:"40px"}}>Mark Departed</button>}
+              {s.trucks>0&&<div style={{fontSize:"11px",color:T.gray600,fontWeight:600}}>{s.trucks} truck{s.trucks!==1?"s":""} 🚛</div>}
             </div>
           ))}
         </div>
       ):(
         <Card pad={false}>
           <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead><tr style={{borderBottom:`1px solid ${T.gray100}`}}>{["Time","Bay","Order","Product","Trucks","Status","Action"].map(h=><th key={h} style={{padding:"10px 18px",fontFamily:F,fontSize:"10px",fontWeight:700,color:T.gray400,textAlign:"left",textTransform:"uppercase",letterSpacing:"0.06em",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
-            <tbody>{SLOTS.map((s,i)=>(
-              <tr key={i} style={{borderBottom:i<SLOTS.length-1?`1px solid ${T.gray100}`:"none",background:s.status==="open"?`${T.green}08`:T.white}}>
-                <td style={{padding:"13px 18px",fontFamily:F,fontSize:"13px",fontWeight:800,color:T.black}}>{s.time}</td>
-                <td style={{padding:"13px 18px",fontFamily:F,fontSize:"12px",color:T.gray600}}>{s.bay}</td>
-                <td style={{padding:"13px 18px",fontFamily:F,fontSize:"12px",fontWeight:700,color:s.order==="—"?T.gray200:T.black}}>{s.order}</td>
-                <td style={{padding:"13px 18px"}}>{s.product!=="—"?<span style={{background:T.gray100,color:T.black,fontSize:"10px",fontWeight:800,padding:"3px 7px"}}>{s.product}</span>:<span style={{color:T.gray200}}>—</span>}</td>
+            <thead><tr style={{borderBottom:`1px solid ${T.gray100}`}}>{["Bay","Order","Buyer","Product","Trucks","Status"].map(h=><th key={h} style={{padding:"10px 18px",fontFamily:F,fontSize:"10px",fontWeight:700,color:T.gray400,textAlign:"left",textTransform:"uppercase",letterSpacing:"0.06em",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
+            <tbody>{slots.map((s,i)=>(
+              <tr key={i} style={{borderBottom:i<slots.length-1?`1px solid ${T.gray100}`:"none"}}>
+                <td style={{padding:"13px 18px",fontFamily:F,fontSize:"13px",fontWeight:800,color:T.black}}>{s.bay}</td>
+                <td style={{padding:"13px 18px",fontFamily:F,fontSize:"12px",fontWeight:700,color:T.black}}>{s.order}</td>
+                <td style={{padding:"13px 18px",fontFamily:F,fontSize:"12px",color:T.gray600}}>{s.buyer}</td>
+                <td style={{padding:"13px 18px"}}><span style={{background:T.gray100,color:T.black,fontSize:"10px",fontWeight:800,padding:"3px 7px"}}>{s.product}</span></td>
                 <td style={{padding:"13px 18px",fontFamily:F,fontSize:"12px",fontWeight:800,color:s.trucks?T.black:T.gray200}}>{s.trucks?`${s.trucks} 🚛`:"—"}</td>
                 <td style={{padding:"13px 18px"}}><Badge status={s.status}/></td>
-                <td style={{padding:"13px 18px"}}>
-                  {s.status==="open"?<button style={{background:T.black,color:T.white,border:"none",padding:"6px 12px",fontSize:"11px",fontWeight:700,cursor:"pointer",fontFamily:F,minHeight:"36px"}}>Assign</button>
-                  :s.status==="loading"?<button style={{background:T.green,color:T.white,border:"none",padding:"6px 12px",fontSize:"11px",fontWeight:700,cursor:"pointer",fontFamily:F,minHeight:"36px"}}>Departed</button>
-                  :<span style={{fontSize:"11px",color:T.gray400}}>—</span>}
-                </td>
               </tr>
             ))}</tbody>
           </table>
@@ -1788,52 +1515,69 @@ function TruckSched({isMobile}) {
   );
 }
 
-function BuyerNetwork({isMobile}) {
+function BuyerNetwork({depot,isMobile}) {
+  const {depotOrders,loadDepotOrders}=useVentrylStore();
+  useEffect(()=>{if(depot?.id)loadDepotOrders(depot.id);},[depot?.id]);
+  const orders=depotOrders[depot?.id]||[];
+
+  // Aggregate per buyer
+  const byBuyer={};
+  for(const o of orders){
+    if(!byBuyer[o.buyer]) byBuyer[o.buyer]={name:o.buyer,orders:0,vol:0,value:0,lastTs:0};
+    byBuyer[o.buyer].orders+=1;
+    byBuyer[o.buyer].vol+=o.vol||0;
+    byBuyer[o.buyer].value+=o.value||0;
+    // track most recent: submitted is a string like "2 min ago", use raw placed_at if available
+    const ts=o._raw?.placed_at?new Date(o._raw.placed_at).getTime():0;
+    if(ts>byBuyer[o.buyer].lastTs) byBuyer[o.buyer].lastTs=ts;
+  }
+  const buyers=Object.values(byBuyer).sort((a,b)=>b.value-a.value);
+
+  if(buyers.length===0) return (
+    <div>
+      <SectionHead title="Buyer Network" sub="No buyers yet"/>
+      <div style={{textAlign:"center",padding:"40px 0",color:T.gray400,fontSize:"13px",fontWeight:600}}>
+        No buyer orders found for this depot.
+      </div>
+    </div>
+  );
+
+  const fmtVol=v=>v>=1e6?`${(v/1e6).toFixed(1)}M L`:`${(v/1000).toFixed(0)}k L`;
+  const fmtVal=v=>`₦${(v||0).toLocaleString('en-NG')}`;
+  const fmtLast=ts=>ts?new Date(ts).toLocaleDateString("en-NG",{month:"short",day:"numeric"}):"—";
+
   return (
     <div>
-      <SectionHead title="Buyer Network" sub={`${BUYERS_DATA.length} active buyers · Ventryl Credit Score`}/>
+      <SectionHead title="Buyer Network" sub={`${buyers.length} buyer${buyers.length!==1?"s":""} · ${orders.length} total orders`}/>
       {isMobile?(
-        BUYERS_DATA.map((b,i)=>(
+        buyers.map((b,i)=>(
           <div key={b.name} style={{border:`1px solid ${T.gray100}`,background:T.white,padding:"14px 16px",marginBottom:"8px"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"8px"}}>
               <div>
                 <div style={{fontSize:"13px",fontWeight:800,color:T.black}}>{b.name}</div>
-                <div style={{fontSize:"11px",color:T.gray400,marginTop:"1px"}}>{b.type} · Last: {b.lastOrder}</div>
+                <div style={{fontSize:"11px",color:T.gray400,marginTop:"1px"}}>Last: {fmtLast(b.lastTs)}</div>
               </div>
-              <span style={{background:b.tier==="Gold"?T.amberLight:b.tier==="Silver"?T.gray100:"#F3F0FF",color:b.tier==="Gold"?"#8A5C00":b.tier==="Silver"?T.gray600:"#8B5CF6",fontSize:"10px",fontWeight:700,padding:"3px 8px",borderRadius:"3px"}}>{b.tier}</span>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"8px"}}>
-              {[["Orders",b.orders],["Volume",b.vol],["Spend",b.spend]].map(([l,v])=>(
+              {[["Orders",b.orders],["Volume",fmtVol(b.vol)],["Spend",fmtVal(b.value)]].map(([l,v])=>(
                 <div key={l}><div style={{fontSize:"9px",fontWeight:700,color:T.gray400,textTransform:"uppercase",marginBottom:"2px"}}>{l}</div><div style={{fontSize:"12px",fontWeight:800,color:T.black}}>{v}</div></div>
               ))}
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:"7px",marginTop:"10px"}}>
-              <div style={{flex:1,height:"3px",background:T.gray100,borderRadius:"2px",overflow:"hidden"}}><div style={{height:"100%",width:`${b.score/10}%`,background:b.score>=750?T.green:b.score>=650?T.amber:T.gray400}}/></div>
-              <span style={{fontSize:"12px",fontWeight:800,color:T.black}}>{b.score}</span>
             </div>
           </div>
         ))
       ):(
         <Card pad={false}>
           <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead><tr style={{borderBottom:`1px solid ${T.gray100}`}}>{["Buyer","Type","Orders","Volume","Spend","VCS","Tier","Last"].map(h=><th key={h} style={{padding:"10px 18px",fontFamily:F,fontSize:"10px",fontWeight:700,color:T.gray400,textAlign:"left",textTransform:"uppercase",letterSpacing:"0.06em",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
-            <tbody>{BUYERS_DATA.map((b,i)=>(
-              <tr key={b.name} style={{borderBottom:i<BUYERS_DATA.length-1?`1px solid ${T.gray100}`:"none"}}
+            <thead><tr style={{borderBottom:`1px solid ${T.gray100}`}}>{["Buyer","Orders","Volume","Spend","Last Order"].map(h=><th key={h} style={{padding:"10px 18px",fontFamily:F,fontSize:"10px",fontWeight:700,color:T.gray400,textAlign:"left",textTransform:"uppercase",letterSpacing:"0.06em",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
+            <tbody>{buyers.map((b,i)=>(
+              <tr key={b.name} style={{borderBottom:i<buyers.length-1?`1px solid ${T.gray100}`:"none"}}
                 onMouseEnter={e=>e.currentTarget.style.background=T.gray50}
                 onMouseLeave={e=>e.currentTarget.style.background=T.white}>
                 <td style={{padding:"13px 18px",fontFamily:F,fontSize:"13px",fontWeight:800,color:T.black}}>{b.name}</td>
-                <td style={{padding:"13px 18px"}}><span style={{background:T.gray100,color:T.gray600,fontSize:"10px",fontWeight:700,padding:"3px 7px",borderRadius:"3px"}}>{b.type}</span></td>
                 <td style={{padding:"13px 18px",fontFamily:F,fontSize:"13px",fontWeight:700,color:T.black}}>{b.orders}</td>
-                <td style={{padding:"13px 18px",fontFamily:F,fontSize:"12px",color:T.gray600}}>{b.vol}</td>
-                <td style={{padding:"13px 18px",fontFamily:F,fontSize:"13px",fontWeight:800,color:T.black}}>{b.spend}</td>
-                <td style={{padding:"13px 18px"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:"7px"}}>
-                    <div style={{height:"3px",background:T.gray100,borderRadius:"2px",overflow:"hidden",width:"50px"}}><div style={{height:"100%",width:`${b.score/10}%`,background:b.score>=750?T.green:b.score>=650?T.amber:T.gray400}}/></div>
-                    <span style={{fontFamily:F,fontSize:"12px",fontWeight:800,color:T.black}}>{b.score}</span>
-                  </div>
-                </td>
-                <td style={{padding:"13px 18px"}}><span style={{background:b.tier==="Gold"?T.amberLight:b.tier==="Silver"?T.gray100:"#F3F0FF",color:b.tier==="Gold"?"#8A5C00":b.tier==="Silver"?T.gray600:"#8B5CF6",fontSize:"10px",fontWeight:700,padding:"3px 8px",borderRadius:"3px"}}>{b.tier}</span></td>
-                <td style={{padding:"13px 18px",fontFamily:F,fontSize:"11px",color:T.gray400}}>{b.lastOrder}</td>
+                <td style={{padding:"13px 18px",fontFamily:F,fontSize:"12px",color:T.gray600}}>{fmtVol(b.vol)}</td>
+                <td style={{padding:"13px 18px",fontFamily:F,fontSize:"13px",fontWeight:800,color:T.black}}>{fmtVal(b.value)}</td>
+                <td style={{padding:"13px 18px",fontFamily:F,fontSize:"11px",color:T.gray400}}>{fmtLast(b.lastTs)}</td>
               </tr>
             ))}</tbody>
           </table>
@@ -1846,7 +1590,8 @@ function BuyerNetwork({isMobile}) {
 /* ════════════════════════════════════════════
    TEAM SETTINGS
 ════════════════════════════════════════════ */
-function TeamSettings({isMobile}) {
+function TeamSettings({depot,isMobile}) {
+  const {user:authUser}=useAuthStore();
   const ROLES=[
     {id:"admin",     label:"Admin",      desc:"Full platform access — manage team, orders, finances, settings", color:T.black},
     {id:"manager",   label:"Manager",    desc:"Manage orders, inventory, buyers and team members",             color:T.blue},
@@ -1857,56 +1602,94 @@ function TeamSettings({isMobile}) {
   const roleColor=id=>ROLES.find(r=>r.id===id)?.color||T.gray400;
   const roleLabel=id=>ROLES.find(r=>r.id===id)?.label||id;
 
-  const [members,setMembers]=useState([
-    {id:1,name:"Adebayo Okafor", role:"manager",    email:"adebayo@nepal-en.com",  status:"active",  joined:"Jan 15, 2026"},
-    {id:2,name:"Ngozi Eze",      role:"supervisor", email:"ngozi@nepal-en.com",    status:"active",  joined:"Feb 3, 2026"},
-    {id:3,name:"Chidi Nwosu",    role:"staff",      email:"chidi@nepal-en.com",    status:"inactive",joined:"Mar 1, 2026"},
-  ]);
-  const [invites,setInvites]=useState([
-    {id:1,email:"aisha.ibrahim@outlook.com",role:"staff",sent:"Mar 10, 2026"},
-  ]);
+  const [allRows,setAllRows]=useState([]);
+  const [loading,setLoading]=useState(false);
+  const [actionError,setActionError]=useState(null);
+
+  const reload=async()=>{
+    if(!depot?.id) return;
+    setLoading(true);
+    try{ setAllRows(await teamMembersApi.list(depot.id)); }
+    catch(e){ setActionError(e.message); }
+    finally{ setLoading(false); }
+  };
+  useEffect(()=>{ reload(); },[depot?.id]);
+
+  const members=allRows.filter(r=>r.status!=="pending");
+  const invites=allRows.filter(r=>r.status==="pending");
 
   // Invite modal state
   const [showInvite,setShowInvite]=useState(false);
   const [invForm,setInvForm]=useState({name:"",email:"",role:"staff"});
   const [invSent,setInvSent]=useState(false);
+  const [inviting,setInviting]=useState(false);
 
   // Edit member state
   const [editId,setEditId]=useState(null);
   const [editRole,setEditRole]=useState("");
+  const [saving,setSaving]=useState(false);
 
   // Remove confirmation
-  const [removeTarget,setRemoveTarget]=useState(null); // member obj
+  const [removeTarget,setRemoveTarget]=useState(null);
 
   const activeCount=members.filter(m=>m.status==="active").length;
-  const initials=n=>n.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
+  const initials=n=>(n||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
 
-  const sendInvite=()=>{
-    if(!invForm.email.trim()) return;
-    setInvites(inv=>[...inv,{id:Date.now(),email:invForm.email.trim(),role:invForm.role,sent:"Just now"}]);
-    setInvSent(true);
+  const sendInvite=async()=>{
+    if(!invForm.email.trim()||!depot?.id) return;
+    setInviting(true);setActionError(null);
+    try{
+      await teamMembersApi.invite({depotId:depot.id,email:invForm.email.trim(),name:invForm.name.trim(),role:invForm.role,invitedBy:authUser?.id,depotName:depot.name});
+      await reload();
+      setInvSent(true);
+    }catch(e){setActionError(e.message);}
+    finally{setInviting(false);}
   };
   const closeInvite=()=>{setShowInvite(false);setInvForm({name:"",email:"",role:"staff"});setInvSent(false);};
 
-  const saveEdit=()=>{
-    setMembers(ms=>ms.map(m=>m.id===editId?{...m,role:editRole}:m));
-    setEditId(null);
+  const saveEdit=async()=>{
+    setSaving(true);setActionError(null);
+    try{
+      await teamMembersApi.updateRole(editId,editRole);
+      await reload();
+      setEditId(null);
+    }catch(e){setActionError(e.message);}
+    finally{setSaving(false);}
   };
 
-  const toggleStatus=id=>{
-    setMembers(ms=>ms.map(m=>m.id===id?{...m,status:m.status==="active"?"inactive":"active"}:m));
+  const toggleStatus=async(id,current)=>{
+    setActionError(null);
+    try{
+      await teamMembersApi.setStatus(id,current==="active"?"inactive":"active");
+      await reload();
+    }catch(e){setActionError(e.message);}
   };
 
-  const confirmRemove=()=>{
-    setMembers(ms=>ms.filter(m=>m.id!==removeTarget.id));
-    setRemoveTarget(null);
+  const confirmRemove=async()=>{
+    setActionError(null);
+    try{
+      await teamMembersApi.remove(removeTarget.id);
+      await reload();
+      setRemoveTarget(null);
+    }catch(e){setActionError(e.message);}
   };
 
-  const revokeInvite=id=>setInvites(inv=>inv.filter(i=>i.id!==id));
-  const resendInvite=id=>setInvites(inv=>inv.map(i=>i.id===id?{...i,sent:"Just now"}:i));
+  const revokeInvite=async(id)=>{
+    setActionError(null);
+    try{
+      await teamMembersApi.revokeInvite(id);
+      await reload();
+    }catch(e){setActionError(e.message);}
+  };
+
+  // Resend is UI-only (no email service wired yet)
+  const resendInvite=()=>{};
 
   return (
     <div>
+      {actionError&&<div style={{background:T.redLight,border:`1px solid ${T.red}`,padding:"10px 14px",marginBottom:"12px",fontSize:"12px",color:T.red,fontWeight:700}}>{actionError}</div>}
+      {loading&&<div style={{padding:"8px 0",fontSize:"12px",color:T.gray400,fontWeight:600,marginBottom:"8px"}}>Loading…</div>}
+
       {/* ── Invite Modal ── */}
       {showInvite&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:1200,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px"}}>
@@ -1946,9 +1729,9 @@ function TeamSettings({isMobile}) {
                       ))}
                     </div>
                   </div>
-                  <button onClick={sendInvite} disabled={!invForm.email.trim()}
-                    style={{width:"100%",background:invForm.email.trim()?T.black:T.gray200,color:invForm.email.trim()?T.white:T.gray400,border:"none",padding:"13px",fontSize:"13px",fontWeight:800,cursor:invForm.email.trim()?"pointer":"not-allowed",fontFamily:F,minHeight:"48px"}}>
-                    Send Invite →
+                  <button onClick={sendInvite} disabled={!invForm.email.trim()||inviting}
+                    style={{width:"100%",background:invForm.email.trim()&&!inviting?T.black:T.gray200,color:invForm.email.trim()&&!inviting?T.white:T.gray400,border:"none",padding:"13px",fontSize:"13px",fontWeight:800,cursor:invForm.email.trim()&&!inviting?"pointer":"not-allowed",fontFamily:F,minHeight:"48px"}}>
+                    {inviting?"Sending…":"Send Invite →"}
                   </button>
                 </div>
               </>
@@ -2004,7 +1787,7 @@ function TeamSettings({isMobile}) {
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"16px",flexWrap:"wrap",gap:"10px"}}>
         <div>
           <div style={{fontSize:"14px",fontWeight:800,color:T.black}}>Team & Users</div>
-          <div style={{fontSize:"11px",color:T.gray400,marginTop:"2px"}}>{activeCount} active · {invites.length} pending invite{invites.length!==1?"s":""}</div>
+          <div style={{fontSize:"11px",color:T.gray400,marginTop:"2px"}}>{activeCount} active · {members.length} member{members.length!==1?"s":""} · {invites.length} pending invite{invites.length!==1?"s":""}</div>
         </div>
         <button onClick={()=>setShowInvite(true)}
           style={{background:T.black,color:T.white,border:"none",padding:"10px 18px",fontSize:"12px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"40px"}}>
@@ -2028,7 +1811,7 @@ function TeamSettings({isMobile}) {
                   {m.status==="inactive"&&<span style={{fontSize:"9px",fontWeight:700,color:T.gray400,background:T.gray100,padding:"1px 6px"}}>INACTIVE</span>}
                 </div>
                 <div style={{fontSize:"11px",color:T.gray400,marginTop:"1px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.email}</div>
-                <div style={{fontSize:"10px",color:T.gray400,marginTop:"1px"}}>Joined {m.joined}</div>
+                <div style={{fontSize:"10px",color:T.gray400,marginTop:"1px"}}>Joined {m.joined_at?new Date(m.joined_at).toLocaleDateString("en-NG",{month:"short",day:"numeric",year:"numeric"}):new Date(m.created_at).toLocaleDateString("en-NG",{month:"short",day:"numeric",year:"numeric"})}</div>
               </div>
             </div>
             {/* Role badge + actions */}
@@ -2040,7 +1823,7 @@ function TeamSettings({isMobile}) {
                 style={{background:"none",border:`1px solid ${T.gray200}`,color:T.gray600,padding:"5px 12px",fontSize:"11px",fontWeight:700,cursor:"pointer",fontFamily:F,minHeight:"32px"}}>
                 Edit
               </button>
-              <button onClick={()=>toggleStatus(m.id)}
+              <button onClick={()=>toggleStatus(m.id,m.status)}
                 style={{background:"none",border:`1px solid ${m.status==="active"?T.gray200:T.green}`,color:m.status==="active"?T.gray600:T.green,padding:"5px 12px",fontSize:"11px",fontWeight:700,cursor:"pointer",fontFamily:F,minHeight:"32px"}}>
                 {m.status==="active"?"Deactivate":"Activate"}
               </button>
@@ -2065,9 +1848,9 @@ function TeamSettings({isMobile}) {
               </div>
               {editRole&&<div style={{fontSize:"10px",color:T.gray400,marginBottom:"12px"}}>{ROLES.find(r=>r.id===editRole)?.desc}</div>}
               <div style={{display:"flex",gap:"8px"}}>
-                <button onClick={saveEdit}
-                  style={{background:T.black,color:T.white,border:"none",padding:"8px 18px",fontSize:"12px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"36px"}}>
-                  Save Changes ✓
+                <button onClick={saveEdit} disabled={saving}
+                  style={{background:saving?T.gray200:T.black,color:saving?T.gray400:T.white,border:"none",padding:"8px 18px",fontSize:"12px",fontWeight:800,cursor:saving?"not-allowed":"pointer",fontFamily:F,minHeight:"36px"}}>
+                  {saving?"Saving…":"Save Changes ✓"}
                 </button>
                 <button onClick={()=>setEditId(null)}
                   style={{background:T.white,color:T.gray400,border:`1px solid ${T.gray200}`,padding:"8px 14px",fontSize:"12px",fontWeight:600,cursor:"pointer",fontFamily:F,minHeight:"36px"}}>
@@ -2093,7 +1876,7 @@ function TeamSettings({isMobile}) {
                   <div style={{fontSize:"12px",fontWeight:700,color:T.black}}>{inv.email}</div>
                   <div style={{fontSize:"10px",color:T.gray400,marginTop:"1px"}}>
                     <span style={{color:"#8A5C00",fontWeight:700,marginRight:"8px"}}>⏳ Pending</span>
-                    Invited as <strong>{roleLabel(inv.role)}</strong> · Sent {inv.sent}
+                    Invited as <strong>{roleLabel(inv.role)}</strong> · Sent {new Date(inv.created_at).toLocaleDateString("en-NG",{month:"short",day:"numeric",year:"numeric"})}
                   </div>
                 </div>
               </div>
@@ -2201,6 +1984,7 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
     {id:"Bay 1",capacity:33000,products:["PMS"],hours:"07:00–19:00",active:true},
     {id:"Bay 2",capacity:33000,products:["PMS","AGO"],hours:"07:00–19:00",active:true},
   ]);
+  const [removeTargetProduct,setRemoveTargetProduct]=useState(null);
 
 
   const {user:authUser,profile:authProfile,setProfile}=useAuthStore();
@@ -2345,7 +2129,6 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
     {id:"bays",label:"Loading Bays",icon:"M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"},
     {id:"products",label:"Products",icon:"M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"},
     {id:"team",label:"Team & Users",icon:"M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0"},
-    {id:"security",label:"Security",icon:"M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"},
   ];
 
   const handleSave=()=>{setSaved(true);setTimeout(()=>setSaved(false),2200);};
@@ -2535,8 +2318,6 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
         {id:"dpk",  name:"DPK",  fullName:"Dual Purpose Kerosene",       unit:"L",  defaultPrice:1338, defaultThreshold:5000},
         {id:"lpg",  name:"LPG",  fullName:"Liquefied Petroleum Gas",     unit:"kg", defaultPrice:1048, defaultThreshold:3000},
         {id:"atk",  name:"ATK",  fullName:"Aviation Turbine Kerosene",   unit:"L",  defaultPrice:1885, defaultThreshold:2500},
-        {id:"lpfo", name:"LPFO", fullName:"Low Pour Fuel Oil",           unit:"L",  defaultPrice:855,  defaultThreshold:2000},
-        {id:"hpfo", name:"HPFO", fullName:"High Pour Fuel Oil",          unit:"L",  defaultPrice:790,  defaultThreshold:2000},
       ];
       const activeIds=new Set((depot?.products||[]).map(p=>p.id));
       const activeProducts=depot?.products||[];
@@ -2589,7 +2370,7 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
                       <div style={{background:T.black,color:T.white,padding:"4px 10px",fontSize:"11px",fontWeight:800}}>{p.name}</div>
                       <div style={{fontSize:"11px",color:T.gray400,fontWeight:600}}>{ALL_PRODUCTS.find(m=>m.id===p.id)?.fullName}</div>
                     </div>
-                    <button onClick={()=>toggleProduct(p.id)} style={{background:"none",border:`1px solid ${T.red}`,color:T.red,padding:"5px 10px",fontSize:"10px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"30px"}}>Remove</button>
+                    <button onClick={()=>setRemoveTargetProduct(p)} style={{background:"none",border:`1px solid ${T.red}`,color:T.red,padding:"5px 10px",fontSize:"10px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"30px"}}>Remove</button>
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr",gap:"12px"}}>
                     <div>
@@ -2633,7 +2414,7 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
       );
     })(),
 
-    team:(<TeamSettings isMobile={isMobile}/>),
+    team:(<TeamSettings depot={depot} isMobile={isMobile}/>),
 
     security:(
       <div>
@@ -2818,6 +2599,33 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
   };
 
   return (
+    <>
+    {removeTargetProduct&&(
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:"20px"}}>
+        <div style={{background:T.white,maxWidth:"360px",width:"100%",padding:"28px",fontFamily:F}}>
+          <div style={{width:"40px",height:"40px",background:T.redLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"18px",marginBottom:"14px"}}>✕</div>
+          <div style={{fontSize:"15px",fontWeight:800,color:T.black,marginBottom:"8px"}}>Remove {removeTargetProduct.name}?</div>
+          <div style={{fontSize:"12px",color:T.gray600,lineHeight:1.6,marginBottom:"20px"}}>
+            <strong>{removeTargetProduct.name} ({removeTargetProduct.fullName||removeTargetProduct.name})</strong> will be removed from your depot listing and marketplace. Existing active orders will not be affected.
+          </div>
+          <div style={{display:"flex",gap:"10px"}}>
+            <button
+              onClick={()=>{
+                if(depot&&onUpdateDepot)
+                  onUpdateDepot(depot.id,{products:(depot.products||[]).filter(p=>p.id!==removeTargetProduct.id)});
+                setRemoveTargetProduct(null);
+              }}
+              style={{flex:1,background:T.red,color:T.white,border:"none",padding:"12px",fontSize:"13px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"44px"}}>
+              Remove
+            </button>
+            <button onClick={()=>setRemoveTargetProduct(null)}
+              style={{flex:1,background:T.white,color:T.black,border:`1px solid ${T.gray200}`,padding:"12px",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:F,minHeight:"44px"}}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     <div style={{display:"flex",gap:"20px",alignItems:"flex-start",flexDirection:isMobile?"column":"row"}}>
       <div style={{width:isMobile?"100%":"196px",flexShrink:0}}>
         <div style={{background:T.white,border:`1px solid ${T.gray100}`,overflow:"hidden"}}>
@@ -2838,6 +2646,7 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
         {content[tab]}
       </div>
     </div>
+    </>
   );
 }
 
@@ -3215,12 +3024,27 @@ function DepotKYBView({depot,isMobile}) {
     </div>
   );
 
+  const isRejected = depot.kyb === 'rejected';
+
   return (
     <div>
-      <div style={{background:T.amberLight,border:`1px solid ${T.amber}`,padding:"14px 18px",marginBottom:"20px"}}>
-        <div style={{fontSize:"12px",fontWeight:800,color:"#8A5C00",marginBottom:"2px"}}>KYB Verification Required</div>
-        <div style={{fontSize:"11px",color:"#8A5C00"}}>{depot.name} cannot receive orders until KYB documents are approved by Ventryl.</div>
-      </div>
+      {isRejected ? (
+        <div style={{background:T.redLight,border:`1px solid ${T.red}`,padding:"16px 18px",marginBottom:"20px"}}>
+          <div style={{fontSize:"13px",fontWeight:800,color:T.red,marginBottom:"6px"}}>KYB Application Rejected</div>
+          {depot.kybRejectionReason && (
+            <div style={{background:T.white,border:`1px solid ${T.red}30`,padding:"10px 12px",marginBottom:"8px"}}>
+              <div style={{fontSize:"10px",fontWeight:700,color:T.red,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"4px"}}>Reason from Ventryl</div>
+              <div style={{fontSize:"13px",color:T.black,fontWeight:600,lineHeight:1.5}}>{depot.kybRejectionReason}</div>
+            </div>
+          )}
+          <div style={{fontSize:"11px",color:T.red,opacity:0.8}}>Please address the issue above, replace the relevant documents, and re-submit for review.</div>
+        </div>
+      ) : (
+        <div style={{background:T.amberLight,border:`1px solid ${T.amber}`,padding:"14px 18px",marginBottom:"20px"}}>
+          <div style={{fontSize:"12px",fontWeight:800,color:"#8A5C00",marginBottom:"2px"}}>KYB Verification Required</div>
+          <div style={{fontSize:"11px",color:"#8A5C00"}}>{depot.name} cannot receive orders until KYB documents are approved by Ventryl.</div>
+        </div>
+      )}
 
       {DOCS.map(doc=>{
         const done=!!uploaded[doc.key];
@@ -3274,26 +3098,37 @@ function DepotKYBView({depot,isMobile}) {
    ORDER INBOX PANEL (shared — dash + depot overview)
 ════════════════════════════════════════════ */
 function OrderInboxPanel({incoming,isMobile,depot,onViewOrder}) {
-  const [acted,setActed]=useState({});
-  // For depot overview: filter to matching depot; for dashboard: show all
-  const relevant = depot
-    ? incoming.filter(o=>!depot.name||o.depot===depot.name||true)
-    : incoming;
-  const pending = relevant.filter(o=>o.status==="pending"&&!acted[o.id]);
-  const confirmed = relevant.filter(o=>o.status==="confirmed"||acted[o.id]==="confirm");
-  const newCount = pending.length;
-  if(relevant.length===0) return null;
+  const {user:authUser}=useAuthStore();
+  const {loadDepotOrders}=useVentrylStore();
+  const [acting,setActing]=useState({}); // orderId -> 'confirming'|'rejecting'
+  const [panelError,setPanelError]=useState(null);
+
+  const pending=incoming.filter(o=>o.status==="pending");
+  const confirmed=incoming.filter(o=>o.status==="confirmed");
+  const newCount=pending.length;
+
+  const handleAct=async(e,orderId,toStatus)=>{
+    e.stopPropagation();
+    const verb=toStatus==="confirmed"?"confirming":"rejecting";
+    setActing(a=>({...a,[orderId]:verb}));
+    setPanelError(null);
+    try{
+      await ordersApi.updateStatus(orderId,toStatus,{actorId:authUser?.id,note:toStatus==="confirmed"?"Order confirmed by depot":"Order rejected by depot"});
+      // Reload the depot's orders — use depotId from raw row or depot prop
+      const depotId=incoming.find(o=>o.id===orderId)?._raw?.depot_id||depot?.id;
+      if(depotId) loadDepotOrders(depotId);
+    }catch(err){setPanelError(err.message);}
+    finally{setActing(a=>{const n={...a};delete n[orderId];return n;});}
+  };
+
+  if(incoming.length===0) return null;
   return (
     <Card style={{marginBottom:"14px"}} pad={false}>
       <div style={{padding:"14px 16px 0 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:"10px",flexWrap:"wrap"}}>
         <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
           <span style={{fontSize:"14px",fontWeight:800,color:T.black}}>Order Inbox</span>
           {newCount>0&&(
-            <span style={{
-              background:T.red,color:T.white,
-              fontSize:"10px",fontWeight:800,padding:"2px 8px",
-              letterSpacing:"0.04em",animation:"pulse 1.6s infinite",
-            }}>
+            <span style={{background:T.red,color:T.white,fontSize:"10px",fontWeight:800,padding:"2px 8px",letterSpacing:"0.04em"}}>
               {newCount} NEW
             </span>
           )}
@@ -3303,43 +3138,52 @@ function OrderInboxPanel({incoming,isMobile,depot,onViewOrder}) {
         </div>
         {newCount>0&&<span style={{fontSize:"10px",color:"#8A5C00",fontWeight:700,background:T.amberLight,padding:"3px 8px"}}>⏱ Respond before SLA expires</span>}
       </div>
+      {panelError&&<div style={{margin:"8px 16px 0",padding:"8px 12px",background:T.redLight,fontSize:"11px",color:T.red,fontWeight:600}}>{panelError}</div>}
       <div style={{padding:"10px 16px 14px 16px"}}>
-        {pending.map(o=>(
-          <div key={o.id} onClick={()=>onViewOrder&&onViewOrder(o.id)}
-            style={{border:`2px solid ${T.amber}`,background:T.white,marginBottom:"10px",position:"relative",cursor:onViewOrder?"pointer":"default",transition:"box-shadow 0.15s"}}
-            onMouseEnter={e=>{if(onViewOrder)e.currentTarget.style.boxShadow="0 2px 12px rgba(0,0,0,0.10)";}}
-            onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
-            {/* NEW flag ribbon */}
-            <div style={{position:"absolute",top:0,right:0,background:T.red,color:T.white,fontSize:"9px",fontWeight:800,padding:"3px 8px",letterSpacing:"0.06em",zIndex:1}}>NEW</div>
-            <div style={{padding:"14px 16px 10px 16px"}}>
-              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:"8px",gap:"10px",flexWrap:isMobile?"wrap":"nowrap"}}>
-                <div>
-                  <div style={{display:"flex",alignItems:"center",gap:"7px",flexWrap:"wrap",marginBottom:"4px"}}>
-                    <span style={{fontSize:"13px",fontWeight:800,color:T.black}}>{o.id}</span>
-                    <span style={{background:T.gray100,color:T.gray600,fontSize:"10px",fontWeight:700,padding:"2px 6px"}}>{o.type}</span>
-                  </div>
-                  <div style={{fontSize:"13px",fontWeight:700,color:T.black,marginBottom:"1px"}}>{o.buyer}</div>
-                  <div style={{fontSize:"11px",color:T.gray400}}>{o.location} · {o.submitted}</div>
-                </div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:"8px 18px",flexShrink:0}}>
-                  {[["Product",o.product],["Volume",`${(o.vol/1000).toFixed(0)}k L`],["Trucks",o.trucks],["Value",`₦${(o.value/1e6).toFixed(1)}M`]].map(([l,v])=>(
-                    <div key={l}>
-                      <div style={{fontSize:"9px",fontWeight:700,color:T.gray400,textTransform:"uppercase",marginBottom:"1px"}}>{l}</div>
-                      <div style={{fontSize:"13px",fontWeight:800,color:T.black}}>{v}</div>
+        {pending.map(o=>{
+          const isActing=acting[o.id];
+          return (
+            <div key={o.id} onClick={()=>onViewOrder&&onViewOrder(o.id)}
+              style={{border:`2px solid ${T.amber}`,background:T.white,marginBottom:"10px",position:"relative",cursor:onViewOrder?"pointer":"default",transition:"box-shadow 0.15s"}}
+              onMouseEnter={e=>{if(onViewOrder)e.currentTarget.style.boxShadow="0 2px 12px rgba(0,0,0,0.10)";}}
+              onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
+              <div style={{position:"absolute",top:0,right:0,background:T.red,color:T.white,fontSize:"9px",fontWeight:800,padding:"3px 8px",letterSpacing:"0.06em",zIndex:1}}>NEW</div>
+              <div style={{padding:"14px 16px 10px 16px"}}>
+                <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:"8px",gap:"10px",flexWrap:isMobile?"wrap":"nowrap"}}>
+                  <div>
+                    <div style={{display:"flex",alignItems:"center",gap:"7px",flexWrap:"wrap",marginBottom:"4px"}}>
+                      <span style={{fontSize:"13px",fontWeight:800,color:T.black}}>{o.id}</span>
+                      <span style={{background:T.gray100,color:T.gray600,fontSize:"10px",fontWeight:700,padding:"2px 6px"}}>{o.type}</span>
                     </div>
-                  ))}
+                    <div style={{fontSize:"13px",fontWeight:700,color:T.black,marginBottom:"1px"}}>{o.buyer}</div>
+                    <div style={{fontSize:"11px",color:T.gray400}}>{o.location} · {o.submitted}</div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:"8px 18px",flexShrink:0}}>
+                    {[["Product",o.product],["Volume",`${(o.vol/1000).toFixed(0)}k L`],["Trucks",o.trucks],["Value",`₦${(o.value||0).toLocaleString('en-NG')}`]].map(([l,v])=>(
+                      <div key={l}>
+                        <div style={{fontSize:"9px",fontWeight:700,color:T.gray400,textTransform:"uppercase",marginBottom:"1px"}}>{l}</div>
+                        <div style={{fontSize:"13px",fontWeight:800,color:T.black}}>{v}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"8px",paddingTop:"10px",borderTop:`1px solid ${T.gray100}`}}>
-                <span style={{fontSize:"11px",fontWeight:800,color:"#8A5C00",background:T.amberLight,padding:"3px 8px"}}>⏱ SLA: {o.slaLeft}</span>
-                <div style={{display:"flex",gap:"7px"}}>
-                  <button onClick={e=>{e.stopPropagation();setActed(a=>({...a,[o.id]:"reject"}));}} style={{background:T.white,color:T.red,border:`1px solid ${T.red}`,padding:"7px 14px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"36px"}}>Reject</button>
-                  <button onClick={e=>{e.stopPropagation();setActed(a=>({...a,[o.id]:"confirm"}));}} style={{background:T.green,color:T.white,border:"none",padding:"7px 14px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"36px"}}>Confirm →</button>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"8px",paddingTop:"10px",borderTop:`1px solid ${T.gray100}`}}>
+                  <span style={{fontSize:"11px",fontWeight:800,color:"#8A5C00",background:T.amberLight,padding:"3px 8px"}}>⏱ SLA: {o.slaLeft}</span>
+                  <div style={{display:"flex",gap:"7px"}}>
+                    <button disabled={!!isActing} onClick={e=>handleAct(e,o.id,"rejected")}
+                      style={{background:T.white,color:T.red,border:`1px solid ${T.red}`,padding:"7px 14px",fontSize:"11px",fontWeight:800,cursor:isActing?"not-allowed":"pointer",fontFamily:F,minHeight:"36px",opacity:isActing?0.6:1}}>
+                      {isActing==="rejecting"?"Rejecting…":"Reject"}
+                    </button>
+                    <button disabled={!!isActing} onClick={e=>handleAct(e,o.id,"confirmed")}
+                      style={{background:T.green,color:T.white,border:"none",padding:"7px 14px",fontSize:"11px",fontWeight:800,cursor:isActing?"not-allowed":"pointer",fontFamily:F,minHeight:"36px",opacity:isActing?0.6:1}}>
+                      {isActing==="confirming"?"Confirming…":"Confirm →"}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {confirmed.map(o=>(
           <div key={o.id} onClick={()=>onViewOrder&&onViewOrder(o.id)}
             style={{border:`1px solid ${T.gray100}`,background:T.white,padding:"12px 16px",marginBottom:"8px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:"10px",flexWrap:"wrap",cursor:onViewOrder?"pointer":"default",transition:"border-color 0.15s,background 0.15s"}}
@@ -3350,7 +3194,7 @@ function OrderInboxPanel({incoming,isMobile,depot,onViewOrder}) {
                 <span style={{fontSize:"12px",fontWeight:800,color:T.black}}>{o.id}</span>
                 <Badge status="confirmed"/>
               </div>
-              <div style={{fontSize:"11px",color:T.gray400}}>{o.buyer} · {o.product} · {(o.vol/1000).toFixed(0)}k L · ₦{(o.value/1e6).toFixed(1)}M</div>
+              <div style={{fontSize:"11px",color:T.gray400}}>{o.buyer} · {o.product} · {(o.vol/1000).toFixed(0)}k L · ₦{(o.value||0).toLocaleString('en-NG')}</div>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
               <span style={{fontSize:"10px",fontWeight:700,color:T.gray400}}>{o.submitted}</span>
@@ -3358,15 +3202,7 @@ function OrderInboxPanel({incoming,isMobile,depot,onViewOrder}) {
             </div>
           </div>
         ))}
-        {relevant.filter(o=>acted[o.id]==="reject").map(o=>(
-          <div key={o.id} style={{border:`1px solid ${T.gray100}`,background:T.gray50,padding:"10px 16px",marginBottom:"8px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:"10px",flexWrap:"wrap",opacity:0.6}}>
-            <div>
-              <div style={{fontSize:"11px",fontWeight:800,color:T.black}}>{o.id} <span style={{color:T.red}}>· Rejected</span></div>
-              <div style={{fontSize:"10px",color:T.gray400}}>{o.buyer} · {o.product} · {(o.vol/1000).toFixed(0)}k L</div>
-            </div>
-          </div>
-        ))}
-        {relevant.length>0&&pending.length===0&&confirmed.length===0&&(
+        {pending.length===0&&confirmed.length===0&&(
           <div style={{fontSize:"12px",color:T.gray400,padding:"12px 0",textAlign:"center"}}>No pending orders. New orders will appear here.</div>
         )}
       </div>
@@ -3387,7 +3223,7 @@ function DepotOverview({depot,onUpdateDepot,onViewOrder,isMobile}) {
       {/* Stock KPI strip */}
       <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":`repeat(${Math.max(products.length+2,3)},1fr)`,gap:"1px",background:T.gray100,border:`1px solid ${T.gray100}`,marginBottom:"14px"}}>
         <KpiCard label="Total Stock" value={totalStock>=1000?`${(totalStock/1000).toFixed(0)}k L`:`${totalStock} L`} sub={`${products.length} product${products.length!==1?"s":""}`}/>
-        <KpiCard label="Stock Value" value={`₦${(totalStockValue/1e6).toFixed(1)}M`} sub="At current prices"/>
+        <KpiCard label="Stock Value" value={`₦${(totalStockValue||0).toLocaleString('en-NG')}`} sub="At current prices"/>
         {products.map(p=>{
           const isLow=p.threshold>0&&p.stock<p.threshold;
           return <KpiCard key={p.id} label={p.name} value={p.stock>=1000?`${(p.stock/1000).toFixed(0)}k L`:`${p.stock} L`} sub={`₦${p.pricePerLitre}/L`} alert={isLow}/>;
@@ -3455,7 +3291,7 @@ function DepotOverview({depot,onUpdateDepot,onViewOrder,isMobile}) {
         <Card>
           <SectionHead title="Revenue" sub="Lifetime orders"/>
           <div style={{padding:"20px 0",textAlign:"center"}}>
-            <div style={{fontSize:"28px",fontWeight:800,color:T.green}}>₦{DEPOT_ORDERS.reduce((s,o)=>s+(o.value||0),0)>0?(DEPOT_ORDERS.reduce((s,o)=>s+(o.value||0),0)/1e6).toFixed(1)+"M":"—"}</div>
+            <div style={{fontSize:"28px",fontWeight:800,color:T.green}}>{(()=>{const t=DEPOT_ORDERS.reduce((s,o)=>s+(o.value||0),0);return t>0?`₦${t.toLocaleString('en-NG')}`:"—";})()}</div>
             <div style={{fontSize:"11px",color:T.gray400,marginTop:"4px"}}>{DEPOT_ORDERS.length} total orders · {DEPOT_ORDERS.filter(o=>o.status==="delivered"||o.status==="collected").length} delivered</div>
           </div>
         </Card>
@@ -3472,7 +3308,7 @@ function DepotOverview({depot,onUpdateDepot,onViewOrder,isMobile}) {
               </div>
               <div style={{display:"flex",gap:"12px",marginTop:"4px"}}>
                 <span style={{fontSize:"11px",color:T.gray600,fontWeight:700}}>{(o.vol/1000).toFixed(0)}k L</span>
-                <span style={{fontSize:"11px",fontWeight:800,color:T.black}}>₦{(o.value/1e6).toFixed(1)}M</span>
+                <span style={{fontSize:"11px",fontWeight:800,color:T.black}}>₦{(o.value||0).toLocaleString('en-NG')}</span>
               </div>
             </div>
           )):(
@@ -3611,7 +3447,7 @@ function ProductCard({product,depot,onAddStock,onAdjustStock,onUpdatePrice,onUpd
           </div>
           {addQty&&Number(addQty)>0&&(
             <div style={{background:T.greenLight,padding:"8px 12px",marginBottom:"10px",fontSize:"11px",color:T.greenDark,fontWeight:700}}>
-              New stock: {((product.stock+Number(addQty))/1000).toFixed(1)}k L  ·  Value: ₦{((product.stock+Number(addQty))*product.pricePerLitre/1e6).toFixed(1)}M
+              New stock: {((product.stock+Number(addQty))/1000).toFixed(1)}k L  ·  Value: ₦{((product.stock+Number(addQty))*product.pricePerLitre).toLocaleString('en-NG')}
             </div>
           )}
           <div style={{display:"flex",gap:"8px"}}>
@@ -3656,7 +3492,7 @@ function ProductCard({product,depot,onAddStock,onAdjustStock,onUpdatePrice,onUpd
 function DepotInventory({depot,onUpdateDepot,isMobile}) {
   const [showAdd,setShowAdd]=useState(false);
   const [newP,setNewP]=useState({name:"",price:"",threshold:"5000",initStock:""});
-  const AVAIL=["PMS","AGO","DPK","LPG","Jet-A1","Kerosene"].filter(n=>!(depot.products||[]).map(p=>p.name).includes(n));
+  const AVAIL=["PMS","AGO","DPK","LPG","ATK"].filter(n=>!(depot.products||[]).map(p=>p.name).includes(n));
 
   const handleAddStock=(productId,qty,ref)=>{
     const prod=(depot.products||[]).find(p=>p.id===productId);
@@ -3785,7 +3621,7 @@ function DepotInventory({depot,onUpdateDepot,isMobile}) {
    DEPOT DETAIL VIEW
 ════════════════════════════════════════════ */
 function DepotDetailView({depot,onUpdateDepot,onViewOrder,isMobile}) {
-  const [tab,setTab]=useState(depot.kyb==="pending"||depot.kyb==="submitted"?"kyb":"overview");
+  const [tab,setTab]=useState(["pending","submitted","rejected"].includes(depot.kyb)?"kyb":"overview");
   const GEAR="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z";
   const lowStockCount=(depot.products||[]).filter(p=>p.threshold>0&&p.stock<p.threshold).length;
   const TABS=[
@@ -3809,7 +3645,7 @@ function DepotDetailView({depot,onUpdateDepot,onViewOrder,isMobile}) {
             {(depot.products||[]).length>0&&<div style={{fontSize:"10px",color:"#666",marginTop:"4px"}}>{(depot.products||[]).map(p=>p.name).join(" · ")}</div>}
           </div>
           <div style={{display:"flex",flexDirection:"column",alignItems:isMobile?"flex-start":"flex-end",gap:"6px"}}>
-            <Badge status={depot.kyb==="verified"?"delivered":"pending"}/>
+            <Badge status={depot.kyb==="verified"?"delivered":depot.kyb==="rejected"?"rejected":depot.kyb==="submitted"?"submitted":"pending"}/>
             {depot.kyb==="verified"&&depot.capacity>0&&<div style={{fontSize:"10px",color:T.gray400}}>{depot.capacity.toLocaleString()} L capacity</div>}
             {(depot.products||[]).length>0&&<div style={{fontSize:"10px",color:T.gray400}}>{(depot.products||[]).reduce((s,p)=>s+p.stock,0).toLocaleString()} L in stock</div>}
           </div>
@@ -3831,6 +3667,15 @@ function DepotDetailView({depot,onUpdateDepot,onViewOrder,isMobile}) {
             <div style={{fontSize:"11px",color:T.blue,marginTop:"1px",opacity:0.8}}>Documents submitted — Ventryl is reviewing your depot. Usually 1–3 business days.</div>
           </div>
           <button onClick={()=>setTab("kyb")} style={{background:T.blue,color:T.white,border:"none",padding:"8px 14px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,flexShrink:0,minHeight:"36px"}}>View Status →</button>
+        </div>
+      )}
+      {depot.kyb==="rejected"&&(
+        <div style={{background:T.redLight,border:`1px solid ${T.red}`,padding:"11px 16px",marginBottom:"14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:"12px",flexWrap:"wrap"}}>
+          <div>
+            <div style={{fontSize:"12px",fontWeight:800,color:T.red}}>KYB Application Rejected</div>
+            <div style={{fontSize:"11px",color:T.red,marginTop:"1px",opacity:0.8}}>{depot.kybRejectionReason||"Review the reason on the KYB tab and re-submit."}</div>
+          </div>
+          <button onClick={()=>setTab("kyb")} style={{background:T.red,color:T.white,border:"none",padding:"8px 14px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,flexShrink:0,minHeight:"36px"}}>View & Re-submit →</button>
         </div>
       )}
       {lowStockCount>0&&depot.kyb==="verified"&&(
@@ -3862,8 +3707,8 @@ function DepotDetailView({depot,onUpdateDepot,onViewOrder,isMobile}) {
           {tab==="overview"&&<DepotOverview depot={depot} onUpdateDepot={onUpdateDepot} onViewOrder={onViewOrder} isMobile={isMobile}/>}
           {tab==="inventory"&&<DepotInventory depot={depot} onUpdateDepot={onUpdateDepot} isMobile={isMobile}/>}
           {tab==="inbox"&&<DepotInbox depotId={depot?.id} isMobile={isMobile} onViewOrder={id=>onViewOrder&&onViewOrder(id)}/>}
-          {tab==="schedule"&&<TruckSched isMobile={isMobile}/>}
-          {tab==="buyers"&&<BuyerNetwork isMobile={isMobile}/>}
+          {tab==="schedule"&&<TruckSched depot={depot} isMobile={isMobile}/>}
+          {tab==="buyers"&&<BuyerNetwork depot={depot} isMobile={isMobile}/>}
           {tab==="kyb"&&<DepotKYBView depot={depot} isMobile={isMobile}/>}
           {tab==="settings"&&<SettingsModule portalType="depot" depot={depot} onUpdateDepot={onUpdateDepot} isMobile={isMobile}/>}
         </div>
@@ -3878,7 +3723,7 @@ function DepotDetailView({depot,onUpdateDepot,onViewOrder,isMobile}) {
 function MarketPulseWidget({onOrder}) {
   const {marketDepots,marketDepotsLoaded,loadMarketDepots}=useVentrylStore();
   useEffect(()=>{if(!marketDepotsLoaded)loadMarketDepots();},[]);
-  const depotsSource=marketDepotsLoaded&&marketDepots.length?marketDepots:DEPOTS;
+  const depotsSource=marketDepots||[];
   const PRODUCTS=[
     {key:"pms",  name:"PMS",  fullName:"Premium Motor Spirit", unit:"/L", change:+2.1, color:T.green},
     {key:"ago",  name:"AGO",  fullName:"Automotive Gas Oil",   unit:"/L", change:-0.8, color:T.blue},
@@ -3948,9 +3793,16 @@ function MarketPulseWidget({onOrder}) {
    DISPUTE MODAL
 ════════════════════════════════════════════ */
 function DisputeModal({onClose,orderId,product,vol}) {
+  const {user:authUser}=useAuthStore();
   const [step,setStep]=useState(1);
   const [reason,setReason]=useState("");
   const [details,setDetails]=useState("");
+  const [submitting,setSubmitting]=useState(false);
+  const [submitError,setSubmitError]=useState(null);
+  const [files,setFiles]=useState([]);
+  const [uploadError,setUploadError]=useState(null);
+  const [dragging,setDragging]=useState(false);
+  const fileInputRef=useRef(null);
   const [ref]=useState(`DSP-${Date.now().toString().slice(-6)}`);
 
   const REASONS=[
@@ -3974,7 +3826,8 @@ function DisputeModal({onClose,orderId,product,vol}) {
             </div>
             <div style={{fontSize:"11px",color:T.gray400,marginTop:"1px"}}>{orderId} · {product} · {(vol/1000).toFixed(0)}k L</div>
           </div>
-          {step===4&&<button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:"20px",color:T.gray400,padding:0,lineHeight:1}}>×</button>}
+          {/* Close button always visible */}
+          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:"20px",color:T.gray400,padding:0,lineHeight:1,flexShrink:0}}>×</button>
           {/* Step indicator */}
           {step<4&&<div style={{display:"flex",gap:"4px"}}>
             {[1,2,3].map(s=><div key={s} style={{width:"6px",height:"6px",borderRadius:"50%",background:step>=s?T.black:T.gray200}}/>)}
@@ -4015,11 +3868,58 @@ function DisputeModal({onClose,orderId,product,vol}) {
               <div style={{fontSize:"10px",color:T.gray400,marginBottom:"16px"}}>{details.length}/500 · Minimum 20 characters</div>
 
               <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:"6px"}}>Evidence (optional)</div>
-              <div style={{border:`1px dashed ${T.gray200}`,padding:"20px",textAlign:"center",marginBottom:"20px",cursor:"pointer",background:T.gray50}}>
-                <div style={{fontSize:"24px",marginBottom:"6px"}}>📎</div>
-                <div style={{fontSize:"12px",fontWeight:700,color:T.gray600}}>Attach photos, waybills, or documents</div>
-                <div style={{fontSize:"10px",color:T.gray400,marginTop:"2px"}}>JPG, PNG, PDF · Max 10MB each</div>
+              {/* Hidden file input */}
+              <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.doc,.docx"
+                style={{display:"none"}}
+                onChange={e=>{
+                  const chosen=Array.from(e.target.files||[]);
+                  const valid=chosen.filter(f=>f.size<=10*1024*1024);
+                  const tooLarge=chosen.filter(f=>f.size>10*1024*1024);
+                  if(tooLarge.length) setUploadError(`${tooLarge.map(f=>f.name).join(", ")} exceed 10 MB and were skipped.`);
+                  else setUploadError(null);
+                  setFiles(prev=>{
+                    const existing=new Set(prev.map(f=>f.name));
+                    return [...prev,...valid.filter(f=>!existing.has(f.name))];
+                  });
+                  e.target.value="";
+                }}
+              />
+              {/* Drop zone */}
+              <div
+                onClick={()=>fileInputRef.current?.click()}
+                onDragOver={e=>{e.preventDefault();setDragging(true);}}
+                onDragLeave={()=>setDragging(false)}
+                onDrop={e=>{
+                  e.preventDefault();setDragging(false);
+                  const dropped=Array.from(e.dataTransfer.files||[]);
+                  const valid=dropped.filter(f=>f.size<=10*1024*1024);
+                  const tooLarge=dropped.filter(f=>f.size>10*1024*1024);
+                  if(tooLarge.length) setUploadError(`${tooLarge.map(f=>f.name).join(", ")} exceed 10 MB.`);
+                  else setUploadError(null);
+                  setFiles(prev=>{const ex=new Set(prev.map(f=>f.name));return [...prev,...valid.filter(f=>!ex.has(f.name))];});
+                }}
+                style={{border:`2px dashed ${dragging?T.black:T.gray200}`,padding:"20px",textAlign:"center",marginBottom:"8px",cursor:"pointer",background:dragging?T.gray100:T.gray50,transition:"all 0.15s"}}>
+                <div style={{fontSize:"22px",marginBottom:"6px"}}>📎</div>
+                <div style={{fontSize:"12px",fontWeight:700,color:T.gray600}}>Click or drag files here</div>
+                <div style={{fontSize:"10px",color:T.gray400,marginTop:"2px"}}>JPG, PNG, PDF, DOC · Max 10 MB each</div>
               </div>
+              {uploadError&&<div style={{fontSize:"11px",color:T.red,fontWeight:600,marginBottom:"6px"}}>{uploadError}</div>}
+              {/* File list */}
+              {files.length>0&&(
+                <div style={{marginBottom:"16px"}}>
+                  {files.map((f,i)=>(
+                    <div key={f.name} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 10px",background:T.white,border:`1px solid ${T.gray100}`,marginBottom:"4px"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:"8px",minWidth:0}}>
+                        <span style={{fontSize:"14px"}}>{f.type.startsWith("image/")?"🖼️":f.type==="application/pdf"?"📄":"📎"}</span>
+                        <span style={{fontSize:"11px",fontWeight:700,color:T.black,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</span>
+                        <span style={{fontSize:"10px",color:T.gray400,flexShrink:0}}>{(f.size/1024).toFixed(0)} KB</span>
+                      </div>
+                      <button onClick={e=>{e.stopPropagation();setFiles(prev=>prev.filter((_,j)=>j!==i));}}
+                        style={{background:"none",border:"none",cursor:"pointer",color:T.gray400,fontSize:"16px",lineHeight:1,padding:"0 4px",flexShrink:0}}>×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <button disabled={details.trim().length<20} onClick={()=>setStep(3)} style={{background:details.trim().length>=20?T.black:T.gray200,color:details.trim().length>=20?T.white:T.gray400,border:"none",padding:"12px",fontSize:"13px",fontWeight:800,cursor:details.trim().length>=20?"pointer":"not-allowed",fontFamily:F,width:"100%",minHeight:"44px"}}>Review Dispute →</button>
             </div>
@@ -4037,6 +3937,7 @@ function DisputeModal({onClose,orderId,product,vol}) {
                   ["Product",`${product} · ${(vol/1000).toFixed(0)}k L`],
                   ["Issue",REASONS.find(r=>r.id===reason)?.label||reason],
                   ["Details",details.slice(0,120)+(details.length>120?"…":"")],
+                  ["Evidence",files.length>0?`${files.length} file${files.length!==1?"s":""} attached`:"None"],
                 ].map(([k,v])=>(
                   <div key={k} style={{display:"flex",gap:"16px",padding:"10px 14px",borderBottom:`1px solid ${T.gray100}`,fontSize:"12px"}}>
                     <span style={{color:T.gray400,fontWeight:600,width:"70px",flexShrink:0}}>{k}</span>
@@ -4044,7 +3945,52 @@ function DisputeModal({onClose,orderId,product,vol}) {
                   </div>
                 ))}
               </div>
-              <button onClick={()=>setStep(4)} style={{background:T.red,color:T.white,border:"none",padding:"12px",fontSize:"13px",fontWeight:800,cursor:"pointer",fontFamily:F,width:"100%",minHeight:"44px",marginBottom:"8px"}}>Submit Dispute</button>
+              {submitError&&<div style={{background:"#FEF2F2",border:`1px solid ${T.red}`,padding:"10px 12px",marginBottom:"10px",fontSize:"12px",color:T.red,fontWeight:700}}>{submitError}</div>}
+              <button disabled={submitting} onClick={async()=>{
+                setSubmitting(true);setSubmitError(null);
+                try{
+                  // 1. Upload evidence files to Storage (best-effort)
+                  const evidenceUrls=[];
+                  for(const file of files){
+                    const path=`${orderId}/${ref}/${Date.now()}_${file.name.replace(/\s+/g,'_')}`;
+                    const {data:upData,error:upErr}=await supabase.storage
+                      .from('dispute-evidence').upload(path,file,{upsert:true});
+                    if(!upErr&&upData){
+                      const {data:{publicUrl}}=supabase.storage.from('dispute-evidence').getPublicUrl(upData.path);
+                      evidenceUrls.push(publicUrl);
+                    }
+                  }
+                  // 2. Save dispute record
+                  await supabase.from('disputes').insert({
+                    reference:ref, order_id:orderId, buyer_id:authUser?.id,
+                    reason, details, status:'open',
+                    evidence_urls:evidenceUrls,
+                  });
+                  // 2. Update order status → disputed
+                  await supabase.from('orders').update({status:'disputed'}).eq('id',orderId);
+                  // 3. Log status change (omit from_status to avoid null type ambiguity)
+                  await supabase.from('order_status_logs').insert({
+                    order_id:orderId, to_status:'disputed',
+                    note:`Dispute filed (${ref}): ${REASONS.find(r=>r.id===reason)?.label}`,
+                    actor_id:authUser?.id,
+                  });
+                  // 4. Notify depot (fire-and-forget)
+                  const {data:orderRow}=await supabase.from('orders')
+                    .select('depot_id, depots(name)')
+                    .eq('id',orderId).maybeSingle();
+                  if(orderRow){
+                    notifApi.send({
+                      userId:authUser?.id, type:'dispute_filed', channel:'email',
+                      data:{orderId, depotName:orderRow.depots?.name||'Depot',
+                        buyerName:authUser?.email||'Buyer', reason:REASONS.find(r=>r.id===reason)?.label||reason, ref},
+                    }).catch(()=>{});
+                  }
+                  setStep(4);
+                }catch(e){setSubmitError(e.message);}
+                finally{setSubmitting(false);}
+              }} style={{background:submitting?T.gray200:T.red,color:submitting?T.gray400:T.white,border:"none",padding:"12px",fontSize:"13px",fontWeight:800,cursor:submitting?"not-allowed":"pointer",fontFamily:F,width:"100%",minHeight:"44px",marginBottom:"8px"}}>
+                {submitting?"Submitting…":"Submit Dispute"}
+              </button>
               <button onClick={onClose} style={{background:"none",border:`1px solid ${T.gray200}`,color:T.gray600,padding:"10px",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:F,width:"100%",minHeight:"40px"}}>Cancel</button>
             </div>
           )}
@@ -4076,13 +4022,16 @@ function DisputeModal({onClose,orderId,product,vol}) {
    BUYER ORDER DETAIL — Customer tracking view
 ════════════════════════════════════════════ */
 function BuyerOrderDetail({orderId,onBack,isMobile}) {
-  const _placed = _placedOrdersStore.find(o=>o.id===orderId);
-  const {buyerOrders,orderDetails,loadOrderDetail}=useVentrylStore();
-  // Load detail from DB if not already in session or cache
-  useEffect(()=>{if(!_placed)loadOrderDetail(orderId);},[orderId]);
-  const storeOrder=buyerOrders.find(o=>o.id===orderId);
-  const order = _placed||storeOrder||ORDERS.find(o=>o.id===orderId)||INCOMING.find(o=>o.id===orderId);
-  const meta  = _placed?.meta||orderDetails[orderId]||ORDER_META[orderId]||{};
+  const {buyerOrders,orderDetails,loadOrderDetail,invalidateOrderDetail,loadBuyerOrders}=useVentrylStore();
+  const {user:authUser}=useAuthStore();
+  // Always load fresh detail from DB on mount (invalidate stale cache)
+  useEffect(()=>{
+    invalidateOrderDetail(orderId);
+    loadOrderDetail(orderId);
+    if(authUser?.id) loadBuyerOrders(authUser.id);
+  },[orderId]);
+  const order=buyerOrders.find(o=>o.id===orderId);
+  const meta=orderDetails[orderId]||{};
 
   // local live-tracking state (synced from depot stores so changes persist across navigation)
   const [liveStatus,setLiveStatus]=useState(()=>_orderStatusStore[orderId]||order?.status||"pending");
@@ -4098,39 +4047,75 @@ function BuyerOrderDetail({orderId,onBack,isMobile}) {
   const [counterInput,setCounterInput]=useState("");
   const [showCounterForm,setShowCounterForm]=useState(false);
 
+  // Sync liveStatus + negotiation from loaded data (covers page-load and post-reload cases)
+  useEffect(()=>{
+    const s=meta?.status||storeOrder?.status;
+    if(s) setLiveStatus(s);
+  },[meta?.status,storeOrder?.status]);
+
+  useEffect(()=>{
+    const neg=meta?._negotiation;
+    if(neg){
+      if(neg.status) setQuoteStatus(neg.status);
+      const rounds=(neg.delivery_rounds||[]).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).map(r=>({
+        from:r.from_party,amount:r.amount,time:new Date(r.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})
+      }));
+      if(rounds.length>0) setQuoteRounds(rounds);
+    }
+  },[meta?._negotiation]);
+
+  // Helper: reload full order data (invalidate cache then fetch fresh)
+  const reloadOrderDetail=useRef(null);
+  reloadOrderDetail.current=()=>{
+    invalidateOrderDetail(orderId);
+    loadOrderDetail(orderId);
+    if(authUser?.id) loadBuyerOrders(authUser.id);
+  };
+
   // ── Realtime: update live state when Supabase pushes changes ──────
   useOrderRealtime(orderId,(payload)=>{
     const {table,new:n}=payload;
-    if(table==="orders"&&n?.status) setLiveStatus(n.status);
+    if(table==="orders"&&n?.status){
+      setLiveStatus(n.status);
+      // Refresh full detail so trucks, timeline, financials all update
+      reloadOrderDetail.current?.();
+    }
     if(table==="order_trucks"&&n){
       setLiveTrucks(prev=>{
-        const idx=prev.findIndex(t=>t.id===n.id);
-        if(idx>=0) return prev.map((t,i)=>i===idx?{...t,...n}:t);
+        const idx=prev.findIndex(t=>t._dbId===n.id||t.id===n.id);
+        if(idx>=0) return prev.map((t,i)=>i===idx?{...t,...n,_dbId:n.id}:t);
         return [...prev,n];
       });
     }
+    if(table==="order_status_logs"){
+      // New activity log entry — refresh detail to get updated timeline
+      reloadOrderDetail.current?.();
+    }
     if(table==="delivery_negotiations"&&n){
       if(n.status) setQuoteStatus(n.status);
+      // Reload to get full rounds data
+      reloadOrderDetail.current?.();
     }
   });
 
-  const approveDeliveryQuote=()=>{
-    const newStatus="agreed";
-    _deliveryQuoteStore[orderId]={rounds:quoteRounds,status:newStatus};
-    setQuoteStatus(newStatus);
-    setShowCounterForm(false);
+  const approveDeliveryQuote=async()=>{
+    try{
+      const latestAmount=quoteRounds[quoteRounds.length-1]?.amount||0;
+      await negotiationsApi.accept(orderId,latestAmount);
+      setQuoteStatus("agreed");
+      setShowCounterForm(false);
+      reloadOrderDetail.current?.();
+    }catch(e){console.error("Approve quote error:",e);}
   };
 
-  const sendCounterOffer=(amount)=>{
-    const now=new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
-    const round={from:"buyer",amount:parseInt(amount),time:now};
-    const newRounds=[...quoteRounds,round];
-    const newStatus="depot_pending";
-    _deliveryQuoteStore[orderId]={rounds:newRounds,status:newStatus};
-    setQuoteRounds(newRounds);
-    setQuoteStatus(newStatus);
-    setCounterInput("");
-    setShowCounterForm(false);
+  const sendCounterOffer=async(amount)=>{
+    try{
+      await negotiationsApi.sendQuote(orderId,"buyer",parseInt(amount));
+      setQuoteStatus("depot_pending");
+      setCounterInput("");
+      setShowCounterForm(false);
+      reloadOrderDetail.current?.();
+    }catch(e){console.error("Counter offer error:",e);}
   };
 
   if(!order) return (
@@ -4146,23 +4131,34 @@ function BuyerOrderDetail({orderId,onBack,isMobile}) {
   const depotInfo = meta.depot||{};
   const delivery  = meta.delivery||null;
   const isDelivery= !delivery||delivery.mode==="delivery";
-  const fmtMoney  = n=>n>=1e6?`₦${(n/1e6).toFixed(2)}M`:`₦${n?.toLocaleString()||"0"}`;
+  const fmtMoney  = n=>`₦${(n||0).toLocaleString('en-NG')}`;
   const isMulti   = Array.isArray(meta.products)&&meta.products.length>1;
   const vol       = meta.vol||order.vol||0;
   const product   = isMulti ? meta.products.map(p=>p.name).join(" + ") : (meta.product||order.product);
   const truckCount= meta.trucks||order.trucks||0;
 
-  const STATUS_STEPS=["pending","confirmed","loading","in_transit","delivered"];
-  const STEP_LABELS =["Placed","Confirmed","Loading","In Transit","Delivered"];
-  const currentStep =Math.max(0,STATUS_STEPS.indexOf(liveStatus));
+  const isPickup=delivery&&delivery.mode==="pickup";
+  const isTerminal=["rejected","cancelled"].includes(liveStatus);
+  const isDisputed=liveStatus==="disputed";
+  const STATUS_STEPS=isPickup
+    ?["pending","confirmed","loading","collected"]
+    :["pending","confirmed","loading","in_transit","delivered"];
+  const STEP_LABELS=isPickup
+    ?["Placed","Confirmed","Loading","Collected"]
+    :["Placed","Confirmed","Loading","In Transit","Delivered"];
+  const currentStep=isTerminal?-1:isDisputed?Math.max(0,STATUS_STEPS.indexOf("in_transit")):Math.max(0,STATUS_STEPS.indexOf(liveStatus));
 
   // Status-specific hero config
   const HERO={
     pending:  {bg:T.gray800,    accent:T.gray400, icon:"🕐", title:"Waiting for Depot",      msg:"Your order has been submitted. The depot has up to 2 hours to confirm.",      cta:null},
     confirmed:{bg:"#1A3A0A",    accent:T.green,   icon:"✅", title:"Order Confirmed",        msg:`${depotInfo.name||"The depot"} confirmed your order. Loading preparations are underway.`,cta:null},
-    loading:  {bg:"#0A1F3A",    accent:T.blue,    icon:"⚙️", title:"Loading in Progress",    msg:`Your products are being loaded at ${meta.bay||"the depot"}. Trucks depart soon.`,cta:null},
+    loading:  {bg:"#0A1F3A",    accent:T.blue,    icon:"⚙️", title:"Loading in Progress",    msg:isPickup?`Your products are being loaded at ${meta.bay||"the depot"}. Proceed to the depot for collection.`:`Your products are being loaded at ${meta.bay||"the depot"}. Trucks depart soon.`,cta:null},
     in_transit:{bg:"#0A1F3A",   accent:T.blue,    icon:"🚛", title:"On the Way",             msg:`${truckCount} truck${truckCount!==1?"s":""} are en route to your location. Track progress below.`,cta:null},
     delivered:{bg:"#0D2B0D",    accent:T.green,   icon:"📦", title:"Arrived — Confirm Receipt",msg:`${truckCount} truck${truckCount!==1?"s":""} have arrived. Please confirm receipt to complete the order.`,cta:"confirm"},
+    collected:{bg:"#0D2B0D",    accent:T.green,   icon:"✅", title:"Order Collected",         msg:"You have collected your products from the depot. Order complete.",cta:null},
+    rejected: {bg:"#3A0A0A",    accent:T.red,     icon:"✕",  title:"Order Rejected",          msg:`${depotInfo.name||"The depot"} has rejected this order. Your payment will be refunded to your wallet.`,cta:null},
+    cancelled:{bg:T.gray800,    accent:T.gray400, icon:"✕",  title:"Order Cancelled",         msg:"This order has been cancelled. Any held funds will be returned to your wallet.",cta:null},
+    disputed: {bg:"#3A1F0A",    accent:"#D97706",  icon:"⚠",  title:"Dispute Filed",           msg:"A dispute has been filed on this order. Ventryl's team will review within 24–48 hours.",cta:null},
   };
   const hero = HERO[liveStatus]||HERO.pending;
   const allDelivered = liveTrucks.length>0&&liveTrucks.every(t=>t.status==="delivered");
@@ -4187,7 +4183,13 @@ function BuyerOrderDetail({orderId,onBack,isMobile}) {
               ⚠ Only confirm if you have physically received and checked the delivery. Payment will be released to the depot.
             </div>
             <div style={{display:"flex",gap:"8px"}}>
-              <button onClick={()=>{_buyerConfirmedStore[orderId]=true;setDeliveryConfirmed(true);setShowConfirmModal(false);}} style={{flex:1,background:T.green,color:T.white,border:"none",padding:"12px",fontSize:"13px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"46px"}}>Yes, Confirm</button>
+              <button onClick={async()=>{
+                try{
+                  await ordersApi.updateStatus(orderId,"delivered",{actorId:authUser?.id,note:"Receipt confirmed by buyer"});
+                  _buyerConfirmedStore[orderId]=true;setDeliveryConfirmed(true);setShowConfirmModal(false);
+                  reloadOrderDetail.current?.();
+                }catch(e){console.error("Confirm receipt error:",e);}
+              }} style={{flex:1,background:T.green,color:T.white,border:"none",padding:"12px",fontSize:"13px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"46px"}}>Yes, Confirm</button>
               <button onClick={()=>setShowConfirmModal(false)} style={{flex:1,background:"none",color:T.black,border:`1px solid ${T.gray200}`,padding:"12px",fontSize:"13px",fontWeight:700,cursor:"pointer",fontFamily:F,minHeight:"46px"}}>Cancel</button>
             </div>
           </div>
@@ -4297,42 +4299,54 @@ function BuyerOrderDetail({orderId,onBack,isMobile}) {
         )}
       </div>
 
-      {/* ── 5-STEP STEPPER ── */}
-      <Card style={{marginBottom:"16px"}}>
-        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",position:"relative"}}>
-          <div style={{position:"absolute",top:"13px",left:"13px",right:"13px",height:"2px",background:T.gray100,zIndex:0}}/>
-          <div style={{position:"absolute",top:"13px",left:"13px",height:"2px",
-            width:`${Math.max(0,(currentStep/(STATUS_STEPS.length-1))*100)}%`,
-            background:T.green,zIndex:1,transition:"width 0.6s ease"}}/>
-          {STATUS_STEPS.map((s,i)=>{
-            const done=i<currentStep;
-            const active=i===currentStep;
-            return (
-              <div key={s} style={{display:"flex",flexDirection:"column",alignItems:"center",flex:1,zIndex:2,position:"relative"}}>
-                <div style={{width:"26px",height:"26px",borderRadius:"50%",
-                  background:done?T.green:active?T.black:T.white,
-                  border:`2px solid ${done?T.green:active?T.black:T.gray200}`,
-                  display:"flex",alignItems:"center",justifyContent:"center",
-                  fontSize:"10px",fontWeight:800,color:done||active?T.white:T.gray400,
-                  transition:"all 0.4s",
-                  boxShadow:active?"0 0 0 4px rgba(6,193,103,0.18)":"none"}}>
-                  {done?"✓":i+1}
+      {/* ── STEPPER ── */}
+      {isTerminal?(
+        <Card style={{marginBottom:"16px"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"12px",padding:"12px 0"}}>
+            <div style={{width:"30px",height:"30px",borderRadius:"50%",background:liveStatus==="rejected"?T.red:T.gray400,
+              display:"flex",alignItems:"center",justifyContent:"center",fontSize:"14px",color:T.white,fontWeight:800}}>✕</div>
+            <div style={{fontSize:"13px",fontWeight:800,color:liveStatus==="rejected"?T.red:T.gray600,textTransform:"uppercase",letterSpacing:"0.05em"}}>
+              {liveStatus==="rejected"?"Order Rejected by Depot":"Order Cancelled"}
+            </div>
+          </div>
+        </Card>
+      ):(
+        <Card style={{marginBottom:"16px"}}>
+          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",position:"relative"}}>
+            <div style={{position:"absolute",top:"13px",left:"13px",right:"13px",height:"2px",background:T.gray100,zIndex:0}}/>
+            <div style={{position:"absolute",top:"13px",left:"13px",height:"2px",
+              width:`${Math.max(0,(currentStep/(STATUS_STEPS.length-1))*100)}%`,
+              background:isDisputed?"#D97706":T.green,zIndex:1,transition:"width 0.6s ease"}}/>
+            {STATUS_STEPS.map((s,i)=>{
+              const done=i<currentStep;
+              const active=i===currentStep;
+              return (
+                <div key={s} style={{display:"flex",flexDirection:"column",alignItems:"center",flex:1,zIndex:2,position:"relative"}}>
+                  <div style={{width:"26px",height:"26px",borderRadius:"50%",
+                    background:done?T.green:active?(isDisputed?"#D97706":T.black):T.white,
+                    border:`2px solid ${done?T.green:active?(isDisputed?"#D97706":T.black):T.gray200}`,
+                    display:"flex",alignItems:"center",justifyContent:"center",
+                    fontSize:"10px",fontWeight:800,color:done||active?T.white:T.gray400,
+                    transition:"all 0.4s",
+                    boxShadow:active?`0 0 0 4px ${isDisputed?"rgba(217,119,6,0.18)":"rgba(6,193,103,0.18)"}`:"none"}}>
+                    {done?"✓":active&&isDisputed?"⚠":i+1}
+                  </div>
+                  <div style={{marginTop:"6px",fontSize:"9px",fontWeight:700,
+                    color:done||active?T.black:T.gray400,
+                    textTransform:"uppercase",letterSpacing:"0.04em",
+                    textAlign:"center",whiteSpace:"nowrap"}}>
+                    {STEP_LABELS[i]}
+                  </div>
+                  {active&&!isDisputed&&(
+                    <div style={{width:"5px",height:"5px",borderRadius:"50%",background:T.green,
+                      marginTop:"3px",animation:"pulse 1.4s infinite"}}/>
+                  )}
                 </div>
-                <div style={{marginTop:"6px",fontSize:"9px",fontWeight:700,
-                  color:done||active?T.black:T.gray400,
-                  textTransform:"uppercase",letterSpacing:"0.04em",
-                  textAlign:"center",whiteSpace:"nowrap"}}>
-                  {STEP_LABELS[i]}
-                </div>
-                {active&&(
-                  <div style={{width:"5px",height:"5px",borderRadius:"50%",background:T.green,
-                    marginTop:"3px",animation:"pulse 1.4s infinite"}}/>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </Card>
+              );
+            })}
+          </div>
+        </Card>
+      )}
 
       {/* ── TAB BAR ── */}
       <div style={{display:"flex",borderBottom:`2px solid ${T.gray100}`,marginBottom:"16px"}}>
@@ -4357,8 +4371,48 @@ function BuyerOrderDetail({orderId,onBack,isMobile}) {
             {/* Status context card */}
             <Card style={{marginBottom:"14px"}}>
               <SectionHead title="What's happening"/>
+              {isTerminal?(
+                <div style={{display:"flex",alignItems:"center",gap:"14px",padding:"8px 0"}}>
+                  <div style={{width:"36px",height:"36px",borderRadius:"50%",background:liveStatus==="rejected"?"#FEF2F2":"#F5F5F5",
+                    display:"flex",alignItems:"center",justifyContent:"center",fontSize:"18px",flexShrink:0,
+                    border:`2px solid ${liveStatus==="rejected"?T.red:T.gray200}`}}>
+                    {liveStatus==="rejected"?"✕":"—"}
+                  </div>
+                  <div>
+                    <div style={{fontSize:"13px",fontWeight:800,color:liveStatus==="rejected"?T.red:T.gray600}}>
+                      {liveStatus==="rejected"?"Order Rejected":"Order Cancelled"}
+                    </div>
+                    <div style={{fontSize:"11px",color:T.gray400,marginTop:"3px",lineHeight:1.5}}>
+                      {liveStatus==="rejected"
+                        ?`${depotInfo.name||"The depot"} has rejected this order. Your escrowed payment will be refunded to your Ventryl wallet.`
+                        :"This order has been cancelled. Any held funds will be returned to your wallet."}
+                    </div>
+                  </div>
+                </div>
+              ):isDisputed?(
+                <div style={{display:"flex",alignItems:"center",gap:"14px",padding:"8px 0"}}>
+                  <div style={{width:"36px",height:"36px",borderRadius:"50%",background:T.amberLight,
+                    display:"flex",alignItems:"center",justifyContent:"center",fontSize:"18px",flexShrink:0,
+                    border:"2px solid #D97706"}}>⚠</div>
+                  <div>
+                    <div style={{fontSize:"13px",fontWeight:800,color:"#D97706"}}>Dispute Under Review</div>
+                    <div style={{fontSize:"11px",color:T.gray400,marginTop:"3px",lineHeight:1.5}}>
+                      A dispute has been filed on this order. Ventryl's team will review and resolve within 24–48 hours.
+                    </div>
+                  </div>
+                </div>
+              ):(
               <div style={{display:"flex",flexDirection:"column",gap:"0"}}>
-                {[
+                {(isPickup?[
+                  {s:"pending",   icon:"🕐", label:"Order Placed",     done:currentStep>=0, active:currentStep===0,
+                   detail:"Your order is with the depot. Confirmation expected within 2 hours."},
+                  {s:"confirmed", icon:"✅", label:"Depot Confirmed",   done:currentStep>=1, active:currentStep===1,
+                   detail:`${depotInfo.name||"Depot"} accepted the order. Bay ${meta.bay||"assigned"} · Loading ref: ${meta.loadingRef||"TBA"}.`},
+                  {s:"loading",   icon:"⚙️", label:"Loading Products",  done:currentStep>=2, active:currentStep===2,
+                   detail:`Products are being loaded at ${meta.bay||"loading bay"}. Proceed to the depot for collection.`},
+                  {s:"collected", icon:"🏭", label:"Collected",         done:currentStep>=3, active:currentStep===3,
+                   detail:"You have collected your products from the depot. Order complete."},
+                ]:[
                   {s:"pending",   icon:"🕐", label:"Order Placed",     done:currentStep>=0, active:currentStep===0,
                    detail:"Your order is with the depot. Confirmation expected within 2 hours."},
                   {s:"confirmed", icon:"✅", label:"Depot Confirmed",   done:currentStep>=1, active:currentStep===1,
@@ -4369,7 +4423,7 @@ function BuyerOrderDetail({orderId,onBack,isMobile}) {
                    detail:`${truckCount} truck${truckCount!==1?"s":""} dispatched. Lead truck ETA: ${meta.trucks_detail?.[0]?.eta||"—"}.`},
                   {s:"delivered", icon:"📦", label:"Delivered",         done:currentStep>=4, active:currentStep===4,
                    detail:deliveryConfirmed?"Receipt confirmed. Payment has been processed.":"Trucks have arrived. Please inspect and confirm receipt."},
-                ].map((step,i,arr)=>(
+                ]).map((step,i,arr)=>(
                   <div key={step.s} style={{display:"flex",gap:"12px",paddingBottom:i<arr.length-1?"16px":"0",position:"relative"}}>
                     {i<arr.length-1&&(
                       <div style={{position:"absolute",left:"15px",top:"32px",bottom:0,width:"2px",
@@ -4393,6 +4447,7 @@ function BuyerOrderDetail({orderId,onBack,isMobile}) {
                   </div>
                 ))}
               </div>
+              )}
             </Card>
 
             {/* Truck tracking */}
@@ -4675,7 +4730,10 @@ function BuyerOrderDetail({orderId,onBack,isMobile}) {
                     {e.actor==="buyer"?"B":e.actor==="depot"?"D":"S"}
                   </div>
                   <div style={{flex:1,paddingTop:"1px"}}>
-                    <div style={{fontSize:"11px",fontWeight:700,color:T.black,lineHeight:1.4}}>{e.event}</div>
+                    <div style={{fontSize:"11px",fontWeight:700,color:T.black,lineHeight:1.4}}>
+                      {e.event||(e.from||e.to?(e.from?e.from+" → ":"")+e.to:e.note||"Status update")}
+                    </div>
+                    {e.note&&e.event===undefined&&<div style={{fontSize:"10px",color:T.gray400,marginTop:"1px"}}>{e.note}</div>}
                     <div style={{fontSize:"9px",color:T.gray400,marginTop:"2px"}}>{e.time}</div>
                   </div>
                 </div>
@@ -4872,148 +4930,167 @@ function BuyerOrderDetail({orderId,onBack,isMobile}) {
    DEPOT ORDER DETAIL — Depot management view
 ════════════════════════════════════════════ */
 function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
-  const _placed = _placedOrdersStore.find(o=>o.id===orderId);
-  const {depotOrders,orderDetails,loadOrderDetail}=useVentrylStore();
-  useEffect(()=>{if(!_placed)loadOrderDetail(orderId);},[orderId]);
+  const {user:authUser}=useAuthStore();
+  const {depotOrders,orderDetails,loadOrderDetail,invalidateOrderDetail,loadDepotOrders}=useVentrylStore();
+  useEffect(()=>{invalidateOrderDetail(orderId);loadOrderDetail(orderId);},[orderId]);
   const allDepotOrders=Object.values(depotOrders).flat();
   const dbRaw=allDepotOrders.find(o=>o.id===orderId);
-  const raw = _placed||dbRaw||INCOMING.find(o=>o.id===orderId)||ORDERS.find(o=>o.id===orderId);
-  const meta = _placed?.meta||orderDetails[orderId]||ORDER_META[orderId]||{};
+  const raw=dbRaw;
+  const meta=orderDetails[orderId]||{};
 
-  // Full order lifecycle state (initialized from module-level stores to survive navigation)
-  const [localStatus,setLocalStatus]=useState(()=>_orderStatusStore[orderId]||raw?.status||"pending");
-  const [bay,setBay]=useState(()=>_orderBayStore[orderId]||meta.bay||"");
-  const [truckList,setTruckList]=useState(()=>_orderTruckListStore[orderId]||(meta.trucks_detail||[]).map(t=>({...t})));
-  const [dispatchConfirm,setDispatchConfirm]=useState(false);
-  const [dispatched,setDispatched]=useState(()=>_orderDispatchedStore[orderId]||false);
-  const [deliveryNote,setDeliveryNote]=useState("");
+  // Realtime: reload when buyer files dispute, confirms receipt, or negotiation changes
+  useOrderRealtime(orderId,(payload)=>{
+    const {table,new:n}=payload;
+    if(table==="orders"||table==="order_status_logs"||table==="delivery_negotiations"){
+      invalidateOrderDetail(orderId);
+      loadOrderDetail(orderId);
+      if(depot?.id) loadDepotOrders(depot.id);
+    }
+  });
+
+  // Derive live state from DB (meta refreshes after each API call via invalidate+reload)
+  const liveStatus=raw?.status||meta?.status||"pending";
+  const liveBay=meta.bay||raw?._raw?.bay_assigned||"";
+  const liveTrucks=(meta.trucks_detail||[]).map(t=>({...t}));
+  const liveTimeline=meta.timeline||[];
+
+  // Derive negotiation state from DB
+  const neg=meta._negotiation||null;
+  const liveQuoteRounds=(neg?.delivery_rounds||[]).map(r=>({
+    from:r.from_party,
+    amount:r.amount,
+    time:r.created_at?new Date(r.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"",
+  }));
+  const liveQuoteStatus=neg?.status||"none";
+
+  // Local UI-only state (not persisted, just for the current screen session)
+  const [bay,setBay]=useState("");
+  const [statusNote,setStatusNote]=useState("");
+  const [updating,setUpdating]=useState(false);
+  const [updateError,setUpdateError]=useState(null);
   const [showDispute,setShowDispute]=useState(false);
   const [activeTab,setActiveTab]=useState("manage");
 
-  // Status update drawer state
-  const [showStatusUpdate,setShowStatusUpdate]=useState(false);
-  const [pendingStatus,setPendingStatus]=useState("");
-  const [statusNote,setStatusNote]=useState("");
-  const [statusLog,setStatusLog]=useState(()=>_orderStatusLogStore[orderId]||[]);  // [{from,to,note,time}]
+  // Sync bay input with live value when meta loads
+  useEffect(()=>{if(liveBay)setBay(liveBay);},[liveBay]);
+
   // Truck dispatch entry (delivery mode)
-  const defaultTruckCount=meta.trucks||raw.trucks||1;
+  const defaultTruckCount=meta.trucks||raw?.trucks||1;
   const emptyTruck=()=>({driver:"",plate:"",vol:"",eta:""});
   const [truckInputs,setTruckInputs]=useState(()=>Array.from({length:defaultTruckCount},emptyTruck));
-  const totalOrderVol=meta.vol||raw.vol||0;
+  const totalOrderVol=meta.vol||raw?.vol||0;
   const truckVolTotal=truckInputs.reduce((s,t)=>s+(parseInt(t.vol)||0),0);
   const trucksValid=truckInputs.length>0&&truckInputs.every(t=>t.driver.trim()&&t.plate.trim()&&parseInt(t.vol)>0)&&truckVolTotal>0;
   const updateTruck=(i,field,val)=>setTruckInputs(list=>list.map((t,idx)=>idx===i?{...t,[field]:val}:t));
   const addTruck=()=>setTruckInputs(list=>[...list,emptyTruck()]);
   const removeTruck=(i)=>setTruckInputs(list=>list.filter((_,idx)=>idx!==i));
 
-  // Pickup-specific gate clearance (persisted via _gateRecordStore)
+  // Pickup: gate clearance (session-only — waybill printed before leaving screen)
   const emptyBuyerTruck=()=>({plate:"",vol:"",driver:""});
-  const [buyerTrucks,setBuyerTrucks]=useState(()=>_gateRecordStore[orderId]?.buyerTrucks||[emptyBuyerTruck()]);
-  const [gateNote,setGateNote]=useState(()=>_gateRecordStore[orderId]?.gateNote||"");
-  const [waybillRef,setWaybillRef]=useState(()=>_gateRecordStore[orderId]?.waybillRef||"");
+  const [buyerTrucks,setBuyerTrucks]=useState([emptyBuyerTruck()]);
+  const [gateNote,setGateNote]=useState("");
+  const [waybillRef,setWaybillRef]=useState("");
   const buyerTruckVolTotal=buyerTrucks.reduce((s,t)=>s+(parseInt(t.vol)||0),0);
   const buyerTrucksValid=buyerTrucks.length>0&&buyerTrucks.every(t=>t.plate.trim()&&parseInt(t.vol)>0)&&buyerTruckVolTotal>0;
   const updateBuyerTruck=(i,field,val)=>setBuyerTrucks(list=>list.map((t,idx)=>idx===i?{...t,[field]:val}:t));
   const addBuyerTruck=()=>setBuyerTrucks(list=>[...list,emptyBuyerTruck()]);
   const removeBuyerTruck=(i)=>setBuyerTrucks(list=>list.filter((_,idx)=>idx!==i));
 
-  // Delivery cost negotiation state
-  const [quoteRounds,setQuoteRounds]=useState(()=>(_deliveryQuoteStore[orderId]||{rounds:[]}).rounds);
-  const [quoteStatus,setQuoteStatus]=useState(()=>(_deliveryQuoteStore[orderId]||{status:"none"}).status);
+  // Delivery cost negotiation — UI inputs only
   const [depotCostInput,setDepotCostInput]=useState("");
   const [depotReQuoteInput,setDepotReQuoteInput]=useState("");
   const [showDepotReQuote,setShowDepotReQuote]=useState(false);
 
-  const sendDeliveryQuote=(amount)=>{
-    const now=new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
-    const round={from:"depot",amount:parseInt(amount),time:now};
-    const newRounds=[...quoteRounds,round];
-    const newStatus="buyer_pending";
-    setQuoteRounds(newRounds);
-    setQuoteStatus(newStatus);
-    _deliveryQuoteStore[orderId]={rounds:newRounds,status:newStatus};
-    setDepotCostInput("");
-    setDepotReQuoteInput("");
-    setShowDepotReQuote(false);
+  // Helper: reload order after any mutation
+  const reloadOrder=()=>{
+    invalidateOrderDetail(orderId);
+    loadOrderDetail(orderId);
+    if(depot?.id) loadDepotOrders(depot.id);
   };
 
-  const acceptBuyerCounterOffer=()=>{
-    const newStatus="agreed";
-    _deliveryQuoteStore[orderId]={rounds:quoteRounds,status:newStatus};
-    setQuoteStatus(newStatus);
-    setShowDepotReQuote(false);
+  const sendDeliveryQuote=async(amount)=>{
+    setUpdating(true);setUpdateError(null);
+    try{
+      await negotiationsApi.sendQuote(orderId,"depot",parseInt(amount));
+      reloadOrder();
+      setDepotCostInput("");setDepotReQuoteInput("");setShowDepotReQuote(false);
+    }catch(e){setUpdateError(e.message);}
+    finally{setUpdating(false);}
   };
 
-  if(!raw) return (
+  const acceptBuyerCounterOffer=async()=>{
+    const agreed=liveQuoteRounds[liveQuoteRounds.length-1]?.amount||0;
+    setUpdating(true);setUpdateError(null);
+    try{
+      await negotiationsApi.accept(orderId,agreed);
+      reloadOrder();
+      setShowDepotReQuote(false);
+    }catch(e){setUpdateError(e.message);}
+    finally{setUpdating(false);}
+  };
+
+  if(!raw&&!meta.buyer) return (
     <div style={{padding:"40px",textAlign:"center"}}>
-      <div style={{fontSize:"14px",fontWeight:700,color:T.gray400}}>Order not found.</div>
+      <div style={{fontSize:"14px",fontWeight:700,color:T.gray400}}>Loading order…</div>
       <button onClick={onBack} style={{marginTop:"16px",background:T.black,color:T.white,border:"none",padding:"9px 18px",fontSize:"12px",fontWeight:800,cursor:"pointer",fontFamily:F}}>← Back</button>
     </div>
   );
 
   const buyerInfo=meta.buyer||{};
   const finials=meta.financials||{};
-  const timeline=meta.timeline||[];
-  const fmtMoney=n=>n>=1e6?`₦${(n/1e6).toFixed(2)}M`:`₦${n?.toLocaleString()}`;
+  const fmtMoney=n=>`₦${(n||0).toLocaleString('en-NG')}`;
   const isMultiDepot=Array.isArray(meta.products)&&meta.products.length>1;
-  const orderProductLabel=isMultiDepot?meta.products.map(p=>p.name).join(" + "):(meta.product||raw.product||"");
+  const orderProductLabel=isMultiDepot?meta.products.map(p=>p.name).join(" + "):(meta.product||raw?.product||"");
   const delivery=meta.delivery||null;
   const isDelivery=!delivery||delivery.mode==="delivery";
-
   const isPickup=delivery?.mode==="pickup";
+
   const STATUS_STEPS=isPickup
     ?["pending","confirmed","loading","collected"]
     :["pending","confirmed","loading","in_transit","delivered"];
   const STEP_LABELS=isPickup
     ?["Received","Confirmed","Loading","Collected"]
     :["Received","Confirmed","Loading","Dispatched","Delivered"];
-  const currentStep=Math.max(0,STATUS_STEPS.indexOf(localStatus));
+  const currentStep=Math.max(0,STATUS_STEPS.indexOf(liveStatus));
   const BAYS=["Bay 1","Bay 2","Bay 3"];
-  const allTrucksDelivered=truckList.length>0&&truckList.every(t=>t.status==="delivered");
+  const allTrucksDelivered=liveTrucks.length>0&&liveTrucks.every(t=>t.status==="delivered");
 
-  const applyStatusUpdate=(toStatus,note,newBay,trucks)=>{
-    const prev=localStatus;
-    const entry={from:prev,to:toStatus,note:note||"",time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})};
-    const newLog=[...statusLog,entry];
-    _orderStatusLogStore[orderId]=newLog;
-    setStatusLog(newLog);
-    _orderStatusStore[orderId]=toStatus;
-    setLocalStatus(toStatus);
-    if(toStatus==="loading"&&newBay){_orderBayStore[orderId]=newBay;setBay(newBay);}
-    if(toStatus==="in_transit"){
-      _orderDispatchedStore[orderId]=true;
-      setDispatched(true);
-      if(trucks&&trucks.length>0){
-        const newTrucks=trucks.map((t,i)=>({
-          id:`T${i+1}`,driver:t.driver,plate:t.plate,vol:parseInt(t.vol),
-          departure:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),
-          eta:t.eta||"—",arrivalTime:null,progress:0,status:"in_transit"
-        }));
-        _orderTruckListStore[orderId]=newTrucks;
-        setTruckList(newTrucks);
+  const applyStatusUpdate=async(toStatus,note,newBay,trucks)=>{
+    setUpdating(true);setUpdateError(null);
+    try{
+      if(toStatus==="loading"&&newBay){
+        const loadRef=`LOAD-${new Date().getFullYear()}-${String(Math.floor(Math.random()*900)+100).padStart(3,"0")}`;
+        await ordersApi.assignBay(orderId,newBay,loadRef,authUser?.id);
+      } else if(toStatus==="in_transit"&&trucks?.length){
+        await ordersApi.dispatch(orderId,trucks.map(t=>({
+          driver_name:t.driver,plate:t.plate,volume:parseInt(t.vol),eta:t.eta||null,
+        })),authUser?.id);
+      } else {
+        await ordersApi.updateStatus(orderId,toStatus,{actorId:authUser?.id,note});
       }
-    }
-    if(toStatus==="delivered"||toStatus==="collected"){
-      const newTrucks=truckList.map(t=>({...t,status:"delivered",progress:100}));
-      _orderTruckListStore[orderId]=newTrucks;
-      setTruckList(newTrucks);
-    }
-    if(toStatus==="collected"){
-      _gateRecordStore[orderId]={buyerTrucks,waybillRef,gateNote};
-    }
-    setShowStatusUpdate(false);
-    setStatusNote("");
-    setPendingStatus("");
+      reloadOrder();
+      setStatusNote("");
+    }catch(e){setUpdateError(e.message);}
+    finally{setUpdating(false);}
   };
 
   const handleConfirm=()=>applyStatusUpdate("confirmed","Order confirmed by depot");
-  const handleReject=()=>applyStatusUpdate("rejected","Order rejected");
-  const handleMarkTruckDelivered=(idx)=>{
-    const next=[...truckList];
-    next[idx]={...next[idx],status:"delivered",progress:100};
-    _orderTruckListStore[orderId]=next;
-    setTruckList(next);
-    if(next.every(t=>t.status==="delivered"))applyStatusUpdate("delivered","All trucks delivered");
+  const handleReject=()=>applyStatusUpdate("rejected","Order rejected by depot");
+  const handleMarkTruckDelivered=async(idx)=>{
+    const truck=liveTrucks[idx];
+    setUpdating(true);setUpdateError(null);
+    try{
+      if(truck._dbId){
+        await ordersApi.updateTruck(truck._dbId,{status:"delivered",arrival_time:new Date().toISOString(),progress:100});
+      }
+      // Check if this was the last truck
+      const remaining=liveTrucks.filter((_,i)=>i!==idx&&_?.status!=="delivered");
+      if(remaining.length===0){
+        await ordersApi.updateStatus(orderId,"delivered",{actorId:authUser?.id,note:"All trucks delivered"});
+      }
+      reloadOrder();
+    }catch(e){setUpdateError(e.message);}
+    finally{setUpdating(false);}
   };
 
   return (
@@ -5027,18 +5104,18 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
         <div style={{flex:1}}>
           <div style={{display:"flex",alignItems:"center",gap:"10px",flexWrap:"wrap"}}>
             <span style={{fontSize:isMobile?"16px":"20px",fontWeight:800,color:T.black}}>{raw.id}</span>
-            <Badge status={localStatus}/>
-            {localStatus==="pending"&&<span style={{background:T.red,color:T.white,fontSize:"9px",fontWeight:800,padding:"2px 8px",letterSpacing:"0.06em",animation:"pulse 1.6s infinite"}}>ACTION REQUIRED</span>}
+            <Badge status={liveStatus}/>
+            {liveStatus==="pending"&&<span style={{background:T.red,color:T.white,fontSize:"9px",fontWeight:800,padding:"2px 8px",letterSpacing:"0.06em",animation:"pulse 1.6s infinite"}}>ACTION REQUIRED</span>}
           </div>
           <div style={{fontSize:"11px",color:T.gray400,marginTop:"2px"}}>{buyerInfo.company||raw.buyer} · {orderProductLabel} · {meta.placed||raw.submitted||""}</div>
         </div>
         <div style={{display:"flex",gap:"8px",flexShrink:0}}>
-          {localStatus!=="rejected"&&<button onClick={()=>setShowDispute(true)} style={{background:"none",border:`1px solid ${T.red}`,color:T.red,padding:"7px 12px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"36px"}}>⚠ Flag</button>}
+          {liveStatus!=="rejected"&&<button onClick={()=>setShowDispute(true)} style={{background:"none",border:`1px solid ${T.red}`,color:T.red,padding:"7px 12px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"36px"}}>⚠ Flag</button>}
         </div>
       </div>
 
       {/* Status Stepper */}
-      {localStatus!=="rejected"&&(
+      {liveStatus!=="rejected"&&(
         <Card style={{marginBottom:"14px"}}>
           <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",position:"relative",paddingBottom:"4px"}}>
             <div style={{position:"absolute",top:"13px",left:"13px",right:"13px",height:"2px",background:T.gray100,zIndex:0}}/>
@@ -5059,7 +5136,7 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
         </Card>
       )}
 
-      {localStatus==="rejected"&&(
+      {liveStatus==="rejected"&&(
         <div style={{background:T.redLight,border:`1px solid ${T.red}`,padding:"14px 18px",marginBottom:"14px"}}>
           <div style={{fontSize:"13px",fontWeight:800,color:T.red}}>Order Rejected</div>
           <div style={{fontSize:"11px",color:T.red,marginTop:"2px"}}>Payment has been returned to the buyer. This order is closed.</div>
@@ -5067,7 +5144,7 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
       )}
 
       {/* ── ACTION PANEL — one focused card per stage ── */}
-      {localStatus==="pending"&&(
+      {liveStatus==="pending"&&(
         <Card style={{marginBottom:"14px",padding:0,overflow:"hidden"}}>
           <div style={{background:T.black,padding:"14px 18px"}}>
             <div style={{fontSize:"12px",fontWeight:800,color:T.white,marginBottom:"2px"}}>New Order · Action Required</div>
@@ -5087,9 +5164,9 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
       )}
 
       {/* ── DELIVERY COST NEGOTIATION — confirmed delivery orders only ── */}
-      {localStatus==="confirmed"&&isDelivery&&(
+      {liveStatus==="confirmed"&&isDelivery&&(
         <Card style={{marginBottom:"14px",padding:0,overflow:"hidden"}}>
-          {quoteStatus==="none"&&(
+          {liveQuoteStatus==="none"&&(
             <>
               <div style={{background:"#12122A",padding:"14px 18px",display:"flex",alignItems:"center",gap:"12px"}}>
                 <span style={{fontSize:"20px"}}>💰</span>
@@ -5125,7 +5202,7 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
             </>
           )}
 
-          {quoteStatus==="buyer_pending"&&(
+          {liveQuoteStatus==="buyer_pending"&&(
             <>
               <div style={{background:"#12122A",padding:"14px 18px",display:"flex",alignItems:"center",gap:"12px"}}>
                 <span style={{fontSize:"20px"}}>⏳</span>
@@ -5137,14 +5214,14 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
               <div style={{padding:"14px 18px"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",background:T.gray50,border:`1px solid ${T.gray100}`,marginBottom:"8px"}}>
                   <span style={{fontSize:"11px",color:T.gray400,fontWeight:600}}>Your Quote</span>
-                  <span style={{fontSize:"20px",fontWeight:800,color:T.black}}>₦{(quoteRounds[quoteRounds.length-1]?.amount||0).toLocaleString()}</span>
+                  <span style={{fontSize:"20px",fontWeight:800,color:T.black}}>₦{(liveQuoteRounds[liveQuoteRounds.length-1]?.amount||0).toLocaleString()}</span>
                 </div>
-                <div style={{fontSize:"10px",color:T.gray400,fontWeight:600}}>Sent {quoteRounds[quoteRounds.length-1]?.time||"—"} · Waiting for buyer approval or counter-offer.</div>
+                <div style={{fontSize:"10px",color:T.gray400,fontWeight:600}}>Sent {liveQuoteRounds[liveQuoteRounds.length-1]?.time||"—"} · Waiting for buyer approval or counter-offer.</div>
               </div>
             </>
           )}
 
-          {quoteStatus==="depot_pending"&&(
+          {liveQuoteStatus==="depot_pending"&&(
             <>
               <div style={{background:"#2E1500",padding:"14px 18px",display:"flex",alignItems:"center",gap:"12px"}}>
                 <span style={{fontSize:"20px"}}>💬</span>
@@ -5156,7 +5233,7 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
               </div>
               <div style={{padding:"14px 18px"}}>
                 <div style={{marginBottom:"12px"}}>
-                  {quoteRounds.map((r,i)=>(
+                  {liveQuoteRounds.map((r,i)=>(
                     <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 12px",background:r.from==="buyer"?T.amberLight:T.blueLight,marginBottom:"4px",gap:"10px",border:`1px solid ${r.from==="buyer"?"#FFDD8A":"#C3D7FC"}`}}>
                       <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
                         <span style={{fontSize:"9px",fontWeight:800,padding:"2px 7px",background:r.from==="buyer"?"#8A5C00":T.blue,color:T.white}}>
@@ -5171,7 +5248,7 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
                 <div style={{display:"flex",gap:"8px",flexWrap:"wrap",marginBottom:showDepotReQuote?"12px":"0"}}>
                   <button onClick={acceptBuyerCounterOffer}
                     style={{flex:1,background:T.green,color:T.white,border:"none",padding:"12px",fontSize:"13px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"46px"}}>
-                    Accept ₦{(quoteRounds[quoteRounds.length-1]?.amount||0).toLocaleString()} ✓
+                    Accept ₦{(liveQuoteRounds[liveQuoteRounds.length-1]?.amount||0).toLocaleString()} ✓
                   </button>
                   <button onClick={()=>setShowDepotReQuote(!showDepotReQuote)}
                     style={{flex:1,background:T.black,color:T.white,border:"none",padding:"12px",fontSize:"12px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"46px"}}>
@@ -5201,22 +5278,22 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
             </>
           )}
 
-          {quoteStatus==="agreed"&&(
+          {liveQuoteStatus==="agreed"&&(
             <div style={{padding:"16px 18px",display:"flex",alignItems:"center",gap:"14px",background:T.greenLight}}>
               <span style={{fontSize:"24px"}}>✅</span>
               <div style={{flex:1}}>
                 <div style={{fontSize:"13px",fontWeight:800,color:T.greenDark}}>Delivery Cost Agreed</div>
                 <div style={{fontSize:"11px",color:T.greenDark,marginTop:"2px"}}>
-                  Agreed in {quoteRounds.length} round{quoteRounds.length!==1?"s":""} · Now assign a loading bay below.
+                  Agreed in {liveQuoteRounds.length} round{liveQuoteRounds.length!==1?"s":""} · Now assign a loading bay below.
                 </div>
               </div>
-              <span style={{fontSize:"20px",fontWeight:800,color:T.greenDark}}>₦{(quoteRounds[quoteRounds.length-1]?.amount||0).toLocaleString()}</span>
+              <span style={{fontSize:"20px",fontWeight:800,color:T.greenDark}}>₦{(liveQuoteRounds[liveQuoteRounds.length-1]?.amount||0).toLocaleString()}</span>
             </div>
           )}
         </Card>
       )}
 
-      {localStatus==="confirmed"&&(!isDelivery||quoteStatus==="agreed")&&(
+      {liveStatus==="confirmed"&&(!isDelivery||liveQuoteStatus==="agreed")&&(
         <Card style={{marginBottom:"14px",padding:0,overflow:"hidden"}}>
           <div style={{background:"#1A3A0A",padding:"14px 18px",display:"flex",alignItems:"center",gap:"10px"}}>
             <span style={{fontSize:"18px"}}>{isPickup?"🏭":"🏗"}</span>
@@ -5264,7 +5341,7 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
         </Card>
       )}
 
-      {localStatus==="loading"&&!isPickup&&(
+      {liveStatus==="loading"&&!isPickup&&(
         <Card style={{marginBottom:"14px",padding:0,overflow:"hidden"}}>
           <div style={{background:"#0A1F3A",padding:"14px 18px",display:"flex",alignItems:"center",gap:"10px"}}>
             <span style={{fontSize:"18px"}}>🚛</span>
@@ -5331,7 +5408,7 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
       )}
 
       {/* ── PICKUP: Gate Clearance & Mark Collected ── */}
-      {localStatus==="loading"&&isPickup&&(
+      {liveStatus==="loading"&&isPickup&&(
         <Card style={{marginBottom:"14px",padding:0,overflow:"hidden"}}>
           <div style={{background:"#1A2E0A",padding:"14px 18px",display:"flex",alignItems:"center",gap:"10px"}}>
             <span style={{fontSize:"18px"}}>🏭</span>
@@ -5413,52 +5490,34 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
         </Card>
       )}
 
-      {localStatus==="in_transit"&&!isPickup&&(
+      {liveStatus==="in_transit"&&!isPickup&&(
         <Card style={{marginBottom:"14px",background:"#0A1F3A",border:"none"}}>
           <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
             <span style={{fontSize:"24px"}}>🚛</span>
             <div style={{flex:1}}>
               <div style={{fontSize:"13px",fontWeight:800,color:T.white}}>Trucks in Transit</div>
               <div style={{fontSize:"11px",color:"#aaa",marginTop:"2px"}}>
-                {truckList.filter(t=>t.status==="delivered").length} of {truckList.length||defaultTruckCount} trucks delivered · Mark each truck below as it arrives
+                {liveTrucks.filter(t=>t.status==="delivered").length} of {liveTrucks.length||defaultTruckCount} trucks delivered · Mark each truck below as it arrives
               </div>
             </div>
           </div>
         </Card>
       )}
 
-      {/* Status history log */}
-      {statusLog.length>0&&(
-        <Card style={{marginBottom:"14px"}}>
-          <SectionHead title="Activity Log"/>
-          {statusLog.map((e,i)=>(
-            <div key={i} style={{display:"flex",alignItems:"flex-start",gap:"10px",padding:"8px 0",borderBottom:i<statusLog.length-1?`1px solid ${T.gray100}`:"none"}}>
-              <div style={{width:"8px",height:"8px",borderRadius:"50%",background:T.green,marginTop:"4px",flexShrink:0}}/>
-              <div style={{flex:1}}>
-                <div style={{fontSize:"12px",fontWeight:700,color:T.black}}>
-                  {STEP_LABELS[STATUS_STEPS.indexOf(e.from)]||e.from} → {STEP_LABELS[STATUS_STEPS.indexOf(e.to)]||(e.to==="collected"?"Collected":e.to)}
-                </div>
-                {e.note&&<div style={{fontSize:"11px",color:T.gray400,marginTop:"1px"}}>{e.note}</div>}
-                <div style={{fontSize:"10px",color:T.gray400,marginTop:"2px"}}>{e.time}</div>
-              </div>
-            </div>
-          ))}
-        </Card>
-      )}
 
-      {(localStatus==="delivered"||localStatus==="collected")&&(
+      {(liveStatus==="delivered"||liveStatus==="collected")&&(
         <div style={{background:T.greenLight,border:`1px solid ${T.green}`,padding:"16px 20px",marginBottom:"14px",display:"flex",alignItems:"center",gap:"14px"}}>
           <span style={{fontSize:"28px"}}>✅</span>
           <div style={{flex:1}}>
             <div style={{fontSize:"14px",fontWeight:800,color:T.greenDark}}>
-              {localStatus==="collected"?"Order Complete — Collected by Buyer":"Order Complete — Delivered"}
+              {liveStatus==="collected"?"Order Complete — Collected by Buyer":"Order Complete — Delivered"}
             </div>
             <div style={{fontSize:"11px",color:T.greenDark,marginTop:"3px"}}>
-              Net revenue: {fmtMoney((finials.netToDepot||0)+(quoteStatus==="agreed"?quoteRounds[quoteRounds.length-1]?.amount||0:0))}
-              {quoteStatus==="agreed"&&<span style={{marginLeft:"8px",fontSize:"10px",fontWeight:600,opacity:0.8}}>(incl. ₦{(quoteRounds[quoteRounds.length-1]?.amount||0).toLocaleString()} delivery)</span>}
+              Net revenue: {fmtMoney((finials.netToDepot||0)+(liveQuoteStatus==="agreed"?liveQuoteRounds[liveQuoteRounds.length-1]?.amount||0:0))}
+              {liveQuoteStatus==="agreed"&&<span style={{marginLeft:"8px",fontSize:"10px",fontWeight:600,opacity:0.8}}>(incl. ₦{(liveQuoteRounds[liveQuoteRounds.length-1]?.amount||0).toLocaleString()} delivery)</span>}
             </div>
-            {waybillRef&&localStatus==="collected"&&<div style={{fontSize:"10px",color:T.greenDark,marginTop:"3px",fontWeight:600}}>Waybill: {waybillRef}</div>}
-            {statusLog.length>0&&<div style={{fontSize:"10px",color:T.greenDark,marginTop:"4px",fontWeight:600}}>Completed: {statusLog[statusLog.length-1]?.time}</div>}
+            {waybillRef&&liveStatus==="collected"&&<div style={{fontSize:"10px",color:T.greenDark,marginTop:"3px",fontWeight:600}}>Waybill: {waybillRef}</div>}
+            {liveTimeline.length>0&&<div style={{fontSize:"10px",color:T.greenDark,marginTop:"4px",fontWeight:600}}>Completed: {liveTimeline[liveTimeline.length-1]?.time}</div>}
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:"7px",flexShrink:0}}>
             <button
@@ -5471,7 +5530,8 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
                 depot:depot?.name||"Depot",
                 depotAddr:depot?.location||"Lagos, Nigeria",
                 depotLicense:depot?.license||"",
-                trucks:truckList.length>0?truckList:buyerTrucks.filter(t=>t.plate),
+                trucks:liveTrucks.length>0?liveTrucks:buyerTrucks.filter(t=>t.plate),
+
                 bay,
                 loadRef:meta.loadRef||"",
                 waybillRef,
@@ -5500,7 +5560,7 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
         </div>
       )}
 
-      {localStatus==="rejected"&&(
+      {liveStatus==="rejected"&&(
         <div style={{background:T.redLight,border:`1px solid ${T.red}`,padding:"14px 18px",marginBottom:"14px"}}>
           <div style={{fontSize:"13px",fontWeight:800,color:T.red}}>Order Rejected</div>
           <div style={{fontSize:"11px",color:T.red,marginTop:"2px"}}>Payment has been returned to the buyer. This order is closed.</div>
@@ -5510,7 +5570,7 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
       {/* Dispatch modal (legacy — kept for dispatch confirm flow from truck management) */}
       {/* Sub-tabs */}
       <div style={{display:"flex",borderBottom:`2px solid ${T.gray100}`,marginBottom:"16px",gap:"0"}}>
-        {[["manage","Order Management"],["timeline","Timeline"],["financials","Financials"]].map(([id,label])=>(
+        {[["manage","Order Management"],["timeline","Timeline"],["activity","Activity Log"],["financials","Financials"]].map(([id,label])=>(
           <button key={id} onClick={()=>setActiveTab(id)} style={{padding:"9px 16px",background:"none",border:"none",cursor:"pointer",fontFamily:F,fontSize:"12px",fontWeight:activeTab===id?800:600,color:activeTab===id?T.black:T.gray400,borderBottom:`2px solid ${activeTab===id?T.black:"transparent"}`,marginBottom:"-2px",transition:"all 0.15s"}}>{label}</button>
         ))}
       </div>
@@ -5644,7 +5704,7 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
             </Card>
 
             {/* Pickup: Gate Record Summary */}
-            {isPickup&&localStatus==="collected"&&buyerTrucks.some(t=>t.plate)&&(
+            {isPickup&&liveStatus==="collected"&&buyerTrucks.some(t=>t.plate)&&(
               <Card style={{marginBottom:"14px"}}>
                 <SectionHead title="Gate Record" sub={`${buyerTrucks.length} truck${buyerTrucks.length!==1?"s":""} collected · ${(buyerTruckVolTotal/1000).toFixed(0)}k L`}/>
                 {buyerTrucks.filter(t=>t.plate).map((t,i)=>(
@@ -5669,19 +5729,19 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
             )}
 
             {/* Truck Management — delivery only */}
-            {truckList.length>0&&!isPickup&&(
+            {liveTrucks.length>0&&!isPickup&&(
               <Card>
-                <SectionHead title="Truck Status" sub={`${truckList.length} trucks · ${((meta.vol||raw.vol)/1000).toFixed(0)}k L`}/>
-                {truckList.map((t,i)=>{
+                <SectionHead title="Truck Status" sub={`${liveTrucks.length} trucks · ${((meta.vol||raw.vol)/1000).toFixed(0)}k L`}/>
+                {liveTrucks.map((t,i)=>{
                   const isDelivered=t.status==="delivered";
-                  const isInTransit=(localStatus==="in_transit"||dispatched)&&!isDelivered;
+                  const isInTransit=liveStatus==="in_transit"&&!isDelivered;
                   return (
                     <div key={t.id} style={{paddingTop:i>0?"12px":"0",marginTop:i>0?"12px":"0",borderTop:i>0?`1px solid ${T.gray100}`:"none",display:"flex",alignItems:"center",gap:"10px",flexWrap:"wrap"}}>
                       <div style={{width:"32px",height:"32px",background:isDelivered?T.greenLight:isInTransit?T.blueLight:T.gray100,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"14px",flexShrink:0}}>🚛</div>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:"7px",marginBottom:"2px",flexWrap:"wrap"}}>
                           <span style={{fontSize:"12px",fontWeight:800,color:T.black}}>Truck {i+1}</span>
-                          <Badge status={isDelivered?"delivered":localStatus==="loading"?"loading":"in_transit"}/>
+                          <Badge status={isDelivered?"delivered":liveStatus==="loading"?"loading":"in_transit"}/>
                           <span style={{fontSize:"10px",color:T.gray400}}>{t.plate==="TBD"?"—":t.plate}</span>
                         </div>
                         <div style={{fontSize:"11px",color:T.gray600}}>{t.driver==="TBD"?"Driver TBA":t.driver} · {(t.vol/1000).toFixed(0)}k L</div>
@@ -5712,19 +5772,19 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
           <div>
             <Card style={{marginBottom:"14px"}}>
               <SectionHead title="Next Steps"/>
-              {localStatus==="pending"&&<div style={{fontSize:"12px",color:T.gray600,lineHeight:1.7}}>Review the order details and either <strong>Confirm</strong> to accept or <strong>Reject</strong> to decline. You have <strong style={{color:T.red}}>{raw.slaLeft||"—"}</strong> to respond.</div>}
-              {localStatus==="confirmed"&&<div style={{fontSize:"12px",color:T.gray600,lineHeight:1.7}}>Assign an available loading bay above. This moves the order to <strong>Loading</strong> status.</div>}
-              {localStatus==="loading"&&<div style={{fontSize:"12px",color:T.gray600,lineHeight:1.7}}>Ensure all {meta.trucks||raw.trucks} trucks are loaded, then click <strong>Dispatch All Trucks</strong> to mark the order as <strong>In Transit</strong>.</div>}
-              {(localStatus==="in_transit"||dispatched)&&<div style={{fontSize:"12px",color:T.gray600,lineHeight:1.7}}>Mark each truck as <strong>Delivered</strong> as they confirm delivery. When all trucks are marked, the order completes automatically.</div>}
-              {localStatus==="delivered"&&<div style={{fontSize:"12px",color:T.gray600,lineHeight:1.7}}>Order complete. Net revenue of <strong style={{color:T.greenDark}}>{fmtMoney(finials.netToDepot)}</strong> has been credited to your account.</div>}
-              {localStatus==="rejected"&&<div style={{fontSize:"12px",color:T.gray600,lineHeight:1.7}}>This order was rejected. No further action required.</div>}
+              {liveStatus==="pending"&&<div style={{fontSize:"12px",color:T.gray600,lineHeight:1.7}}>Review the order details and either <strong>Confirm</strong> to accept or <strong>Reject</strong> to decline. You have <strong style={{color:T.red}}>{raw.slaLeft||"—"}</strong> to respond.</div>}
+              {liveStatus==="confirmed"&&<div style={{fontSize:"12px",color:T.gray600,lineHeight:1.7}}>Assign an available loading bay above. This moves the order to <strong>Loading</strong> status.</div>}
+              {liveStatus==="loading"&&<div style={{fontSize:"12px",color:T.gray600,lineHeight:1.7}}>Ensure all {meta.trucks||raw.trucks} trucks are loaded, then click <strong>Dispatch All Trucks</strong> to mark the order as <strong>In Transit</strong>.</div>}
+              {liveStatus==="in_transit"&&<div style={{fontSize:"12px",color:T.gray600,lineHeight:1.7}}>Mark each truck as <strong>Delivered</strong> as they confirm delivery. When all trucks are marked, the order completes automatically.</div>}
+              {liveStatus==="delivered"&&<div style={{fontSize:"12px",color:T.gray600,lineHeight:1.7}}>Order complete. Net revenue of <strong style={{color:T.greenDark}}>{fmtMoney(finials.netToDepot)}</strong> has been credited to your account.</div>}
+              {liveStatus==="rejected"&&<div style={{fontSize:"12px",color:T.gray600,lineHeight:1.7}}>This order was rejected. No further action required.</div>}
             </Card>
 
             <Card>
               <SectionHead title="Financials"/>
               {[
                 ["Order Value",fmtMoney(finials.productValue),null],
-                ...(quoteStatus==="agreed"?[["Delivery Revenue",`+${fmtMoney(quoteRounds[quoteRounds.length-1]?.amount||0)}`,null]]:isDelivery?[["Delivery Cost","Pending","pending"]]:[] ),
+                ...(liveQuoteStatus==="agreed"?[["Delivery Revenue",`+${fmtMoney(liveQuoteRounds[liveQuoteRounds.length-1]?.amount||0)}`,null]]:isDelivery?[["Delivery Cost","Pending","pending"]]:[] ),
                 ["Platform Fee (1%)",`-${fmtMoney(finials.platformFee)}`,"sub"],
                 ["VAT",`-${fmtMoney(finials.vat)}`,"sub"],
               ].map(([l,v,type])=>(
@@ -5737,7 +5797,7 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
               <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0 0 0"}}>
                 <span style={{fontSize:"13px",fontWeight:800,color:T.black}}>Net to Depot</span>
                 <span style={{fontSize:"15px",fontWeight:800,color:T.greenDark}}>
-                  {fmtMoney((finials.netToDepot||0)+(quoteStatus==="agreed"?quoteRounds[quoteRounds.length-1]?.amount||0:0))}
+                  {fmtMoney((finials.netToDepot||0)+(liveQuoteStatus==="agreed"?liveQuoteRounds[liveQuoteRounds.length-1]?.amount||0:0))}
                 </span>
               </div>
             </Card>
@@ -5749,14 +5809,38 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
       {activeTab==="timeline"&&(
         <Card>
           <SectionHead title="Order Timeline"/>
-          {timeline.map((e,i)=>(
-            <div key={i} style={{display:"flex",gap:"10px",paddingBottom:i<timeline.length-1?"14px":"0",position:"relative"}}>
-              {i<timeline.length-1&&<div style={{position:"absolute",left:"11px",top:"22px",bottom:0,width:"2px",background:T.gray100}}/>}
+          {liveTimeline.map((e,i)=>(
+            <div key={i} style={{display:"flex",gap:"10px",paddingBottom:i<liveTimeline.length-1?"14px":"0",position:"relative"}}>
+              {i<liveTimeline.length-1&&<div style={{position:"absolute",left:"11px",top:"22px",bottom:0,width:"2px",background:T.gray100}}/>}
               <div style={{width:"22px",height:"22px",borderRadius:"50%",background:e.actor==="buyer"?T.blueLight:e.actor==="depot"?T.greenLight:T.gray100,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"9px",flexShrink:0,zIndex:1,color:e.actor==="buyer"?T.blue:e.actor==="depot"?T.greenDark:T.gray400,fontWeight:800}}>
                 {e.actor==="buyer"?"B":e.actor==="depot"?"D":"S"}
               </div>
               <div style={{flex:1,paddingTop:"2px"}}>
-                <div style={{fontSize:"12px",fontWeight:700,color:T.black,lineHeight:1.4}}>{e.event}</div>
+                <div style={{fontSize:"12px",fontWeight:700,color:T.black,lineHeight:1.4}}>
+                  {e.event||(e.from||e.to?(e.from?e.from+" → ":"")+e.to:e.note||"Status update")}
+                </div>
+                {e.note&&e.event===undefined&&<div style={{fontSize:"10px",color:T.gray400,marginTop:"1px"}}>{e.note}</div>}
+                <div style={{fontSize:"10px",color:T.gray400,marginTop:"2px"}}>{e.time}</div>
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
+
+      {/* ── TAB: ACTIVITY LOG ── */}
+      {activeTab==="activity"&&(
+        <Card>
+          <SectionHead title="Activity Log" sub="Status changes and actions on this order"/>
+          {liveTimeline.length===0?(
+            <div style={{textAlign:"center",padding:"24px 0",color:T.gray400,fontSize:"12px"}}>No activity recorded yet.</div>
+          ):liveTimeline.map((e,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"flex-start",gap:"10px",padding:"10px 0",borderBottom:i<liveTimeline.length-1?`1px solid ${T.gray100}`:"none"}}>
+              <div style={{width:"8px",height:"8px",borderRadius:"50%",background:T.green,marginTop:"5px",flexShrink:0}}/>
+              <div style={{flex:1}}>
+                <div style={{fontSize:"12px",fontWeight:700,color:T.black}}>
+                  {e.from?(STEP_LABELS[STATUS_STEPS.indexOf(e.from)]||e.from)+" → "+(STEP_LABELS[STATUS_STEPS.indexOf(e.to)]||(e.to==="collected"?"Collected":e.to||"")):"Status update"}
+                </div>
+                {e.note&&<div style={{fontSize:"11px",color:T.gray400,marginTop:"2px"}}>{e.note}</div>}
                 <div style={{fontSize:"10px",color:T.gray400,marginTop:"2px"}}>{e.time}</div>
               </div>
             </div>
@@ -5771,7 +5855,7 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
             <SectionHead title="Revenue Breakdown"/>
             {[
               ["Gross Order Value",fmtMoney(finials.productValue),null],
-              ...(quoteStatus==="agreed"?[["Delivery Revenue",`+${fmtMoney(quoteRounds[quoteRounds.length-1]?.amount||0)}`,null]]:isDelivery?[["Delivery Cost","Pending negotiation","pending"]]:[] ),
+              ...(liveQuoteStatus==="agreed"?[["Delivery Revenue",`+${fmtMoney(liveQuoteRounds[liveQuoteRounds.length-1]?.amount||0)}`,null]]:isDelivery?[["Delivery Cost","Pending negotiation","pending"]]:[] ),
               ["Platform Fee (1%)",`-${fmtMoney(finials.platformFee)}`,"sub"],
               ["VAT (7.5%)",`-${fmtMoney(finials.vat)}`,"sub"],
             ].map(([l,v,type])=>(
@@ -5784,7 +5868,7 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
             <div style={{display:"flex",justifyContent:"space-between",padding:"12px 0 0 0"}}>
               <span style={{fontSize:"14px",fontWeight:800,color:T.black}}>Net to Depot</span>
               <span style={{fontSize:"16px",fontWeight:800,color:T.greenDark}}>
-                {fmtMoney((finials.netToDepot||0)+(quoteStatus==="agreed"?quoteRounds[quoteRounds.length-1]?.amount||0:0))}
+                {fmtMoney((finials.netToDepot||0)+(liveQuoteStatus==="agreed"?liveQuoteRounds[liveQuoteRounds.length-1]?.amount||0:0))}
               </span>
             </div>
           </Card>
@@ -5812,12 +5896,13 @@ function DepotOrderDetail({orderId,depot,onBack,onUpdateDepot,isMobile}) {
    MESSAGE MODAL (shared — buyer↔depot)
 ════════════════════════════════════════════ */
 function UnifiedDash({depots,onOrder,onDepotClick,onNewDepot,onViewOrder,isMobile}) {
+  const {profile:userProfile}=useAuthStore();
   const {buyerOrders,walletNGN,priceHistory,depotOrders}=useVentrylStore();
-  const allOrders=[..._placedOrdersStore.slice().reverse(),...buyerOrders.filter(o=>!_placedOrdersStore.find(p=>p.id===o.id))];
+  const allOrders=buyerOrders;
   const verified=depots.filter(d=>d.kyb==="verified");
   const pending=depots.filter(d=>d.kyb!=="verified");
   const hasInbox=verified.length>0;
-  const chartData=priceHistory.length?priceHistory:PRICE_HISTORY;
+  const chartData=priceHistory;
   // Aggregate real pending orders across all verified depots
   const allDepotIncoming=verified.flatMap(d=>depotOrders[d.id]||[]);
   return (
@@ -5827,8 +5912,8 @@ function UnifiedDash({depots,onOrder,onDepotClick,onNewDepot,onViewOrder,isMobil
       <div style={{background:T.black,padding:isMobile?"16px":"22px 28px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:"12px",flexWrap:"wrap"}}>
           <div>
-            <div style={{fontSize:isMobile?"17px":"20px",fontWeight:800,color:T.white,marginBottom:"2px"}}>Good morning, Emeka</div>
-            <div style={{fontSize:"11px",color:"#666"}}>Chukwuma Fuels Ltd · Lagos · KYB verified</div>
+            <div style={{fontSize:isMobile?"17px":"20px",fontWeight:800,color:T.white,marginBottom:"2px"}}>{(()=>{const h=new Date().getHours();const g=h<12?"Good morning":h<17?"Good afternoon":"Good evening";const first=(userProfile?.full_name||"").split(" ")[0];return first?`${g}, ${first}`:g;})()}</div>
+            <div style={{fontSize:"11px",color:"#666"}}>{[userProfile?.company_name,userProfile?.state,userProfile?.kyc_status==="approved"?"KYC verified":null].filter(Boolean).join(" · ")||"Welcome to Ventryl"}</div>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:"12px",flexWrap:"wrap"}}>
             <div style={{textAlign:"right"}}>
@@ -5869,8 +5954,8 @@ function UnifiedDash({depots,onOrder,onDepotClick,onNewDepot,onViewOrder,isMobil
                   <div style={{fontSize:"11px",color:T.gray400,marginTop:"2px"}}>{o.depot} · {o.product} · {(o.vol/1000).toFixed(0)}k L</div>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
-                  <span style={{fontSize:"12px",fontWeight:800,color:T.black}}>₦{(o.value/1e6).toFixed(1)}M</span>
-                  <Badge status={_orderStatusStore[o.id]||o.status}/>
+                  <span style={{fontSize:"12px",fontWeight:800,color:T.black}}>₦{(o.value||0).toLocaleString('en-NG')}</span>
+                  <Badge status={o.status}/>
                 </div>
               </div>
             ))}
@@ -5980,7 +6065,12 @@ function PlatformSidebar({activeView,setActiveView,depots,onNewDepot,identity,is
           <div style={{minWidth:0}}>
             <div style={{fontSize:"11px",fontWeight:800,color:T.white,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{identity.name||""}</div>
             <div style={{fontSize:"10px",color:"#555"}}>{identity.role||""}</div>
-            {identity.vcs&&<div style={{fontSize:"9px",fontWeight:800,color:identity.vcs>=750?T.green:identity.vcs>=500?"#d97706":"#888",marginTop:"1px"}}>VCS {identity.vcs}</div>}
+            {identity.vcs&&(()=>{
+              const s=identity.vcs;
+              const tier=s>=750?"Platinum":s>=600?"Gold":s>=450?"Silver":s>=300?"Bronze":"Standard";
+              const color=s>=750?T.green:s>=600?"#d97706":s>=450?"#92400e":"#888";
+              return <div style={{fontSize:"9px",fontWeight:800,color,marginTop:"1px"}}>VCS {s} · {tier}</div>;
+            })()}
           </div>
         </div>
         {identity.isAdmin&&<div style={{background:"#0A2A0A",color:T.green,fontSize:"9px",fontWeight:800,padding:"4px 8px",textAlign:"center",letterSpacing:"0.08em",marginBottom:"6px"}}>ADMIN ACCESS</div>}
@@ -6000,7 +6090,7 @@ function PlatformSidebar({activeView,setActiveView,depots,onNewDepot,identity,is
 function VentrylPlatform({bp, user, onSignOut}) {
   const {isMobile}=bp;
   const {user:authUser,profile:authProfile}=useAuthStore();
-  const {ownerDepots,ownerDepotsLoaded,loadOwnerDepots,buyerOrders,buyerOrdersLoaded,loadBuyerOrders,priceHistory,loadPriceHistory}=useVentrylStore();
+  const {ownerDepots,ownerDepotsLoaded,loadOwnerDepots,buyerOrders,buyerOrdersLoaded,loadBuyerOrders,priceHistory,loadPriceHistory,walletNGN,loadWallet}=useVentrylStore();
   const [activeView,setActiveView]=useState("dash");
   const [creatingDepot,setCreatingDepot]=useState(false);
   const [showKycGate,setShowKycGate]=useState(false);
@@ -6011,11 +6101,16 @@ function VentrylPlatform({bp, user, onSignOut}) {
     if(!ownerDepotsLoaded) loadOwnerDepots(authUser.id);
     if(!buyerOrdersLoaded) loadBuyerOrders(authUser.id);
     loadPriceHistory(7);
+    loadWallet(authUser.id);
   },[authUser?.id]);
 
   // Merge DB depots with any locally created ones (pending DB round-trip)
+  // localDepots also stores optimistic patches for existing depots
   const [localDepots,setLocalDepots]=useState([]);
-  const depots=[...ownerDepots,...localDepots.filter(ld=>!ownerDepots.find(d=>d.id===ld.id))];
+  const depots=[
+    ...ownerDepots.map(d=>{const local=localDepots.find(ld=>ld.id===d.id);return local?{...d,...local}:d;}),
+    ...localDepots.filter(ld=>!ownerDepots.find(d=>d.id===ld.id)),
+  ];
 
   const handleNewDepot=()=>{
     if(authProfile?.kyc_status!=="verified"){setShowKycGate(true);return;}
@@ -6037,10 +6132,49 @@ function VentrylPlatform({bp, user, onSignOut}) {
     loadOwnerDepots(authUser.id); // background refresh
     return created; // caller uses the id for KYB uploads
   };
-  const handleUpdateDepot=(depotId,patch)=>{
-    // Update local depots state so UI reflects immediately
-    setLocalDepots(prev=>prev.map(d=>d.id===depotId?{...d,...patch}:d));
-    // Also refresh from DB to get server truth
+  const handleUpdateDepot=async(depotId,patch)=>{
+    // Optimistic local update — merge patch onto existing local entry or create one
+    setLocalDepots(prev=>{
+      const exists=prev.find(d=>d.id===depotId);
+      if(exists) return prev.map(d=>d.id===depotId?{...d,...patch}:d);
+      // Depot lives in ownerDepots; create a local patch entry
+      const base=ownerDepots.find(d=>d.id===depotId);
+      return base?[...prev,{...base,...patch}]:prev;
+    });
+
+    // Persist product changes to depot_products table
+    if(patch.products){
+      const currentDepot=depots.find(d=>d.id===depotId);
+      const currentNames=new Set((currentDepot?.products||[]).map(p=>p.name));
+      const newProducts=patch.products;
+      const newNames=new Set(newProducts.map(p=>p.name));
+
+      // Upsert all valid products in the new list
+      // DB constraint: product IN ('PMS','AGO','DPK','LPG','ATK') AND price_per_litre > 0
+      const VALID_PRODUCTS=new Set(['PMS','AGO','DPK','LPG','ATK']);
+      const validRows=newProducts
+        .filter(p=>VALID_PRODUCTS.has(p.name)&&(p.pricePerLitre||0)>0)
+        .map(p=>({
+          depot_id:depotId,
+          product:p.name,
+          price_per_litre:p.pricePerLitre,
+          stock:p.stock||0,
+          threshold:p.threshold||5000,
+          is_active:p.is_active!==false,
+        }));
+      if(validRows.length>0){
+        const {error}=await supabase.from('depot_products').upsert(validRows,{onConflict:'depot_id,product'});
+        if(error) console.error('[handleUpdateDepot] upsert products',error.message);
+      }
+
+      // Delete products that were removed
+      const removed=[...currentNames].filter(n=>!newNames.has(n));
+      for(const name of removed){
+        await supabase.from('depot_products').delete().eq('depot_id',depotId).eq('product',name);
+      }
+    }
+
+    // Refresh from DB to get server truth
     if(authUser?.id) loadOwnerDepots(authUser.id);
   };
 
@@ -6072,7 +6206,7 @@ function VentrylPlatform({bp, user, onSignOut}) {
     return {dash:"Dashboard",market:"Price Discovery",order_form:"Place Order",orders:"My Orders",wallet:"Wallet",settings:"Settings"}[activeView]||"Dashboard";
   };
 
-  const ALL_BUYER_ORDERS=[..._placedOrdersStore.slice().reverse(),...buyerOrders.filter(o=>!_placedOrdersStore.find(p=>p.id===o.id))];
+  const ALL_BUYER_ORDERS=buyerOrders;
   const ORDERS_VIEW=(
     <div>
       <div style={{fontSize:"14px",fontWeight:800,color:T.black,marginBottom:"14px"}}>My Orders</div>
@@ -6086,7 +6220,7 @@ function VentrylPlatform({bp, user, onSignOut}) {
             </div>
             <div style={{display:"flex",gap:"14px"}}>
               <span style={{fontSize:"11px",color:T.gray600,fontWeight:700}}>{(o.vol/1000).toFixed(0)}k L</span>
-              <span style={{fontSize:"11px",fontWeight:800,color:T.black}}>₦{(o.value/1e6).toFixed(1)}M</span>
+              <span style={{fontSize:"11px",fontWeight:800,color:T.black}}>₦{(o.value||0).toLocaleString('en-NG')}</span>
               <span style={{fontSize:"11px",color:T.gray400}}>{o.placed}</span>
             </div>
           </div>
@@ -6102,9 +6236,9 @@ function VentrylPlatform({bp, user, onSignOut}) {
                 <td style={{padding:"13px 18px"}}><span style={{background:T.gray100,color:T.black,fontSize:"10px",fontWeight:800,padding:"3px 7px"}}>{o.product}</span></td>
                 <td style={{padding:"13px 18px",fontFamily:F,fontSize:"12px",color:T.gray600}}>{(o.vol/1000).toFixed(0)}k L</td>
                 <td style={{padding:"13px 18px",fontFamily:F,fontSize:"12px",fontWeight:700,color:T.black,textAlign:"center"}}>{o.trucks}</td>
-                <td style={{padding:"13px 18px",fontFamily:F,fontSize:"13px",fontWeight:800,color:T.black}}>₦{(o.value/1e6).toFixed(1)}M</td>
+                <td style={{padding:"13px 18px",fontFamily:F,fontSize:"13px",fontWeight:800,color:T.black}}>₦{(o.value||0).toLocaleString('en-NG')}</td>
                 <td style={{padding:"13px 18px",fontFamily:F,fontSize:"11px",color:T.gray400}}>{o.placed}</td>
-                <td style={{padding:"13px 18px"}}><Badge status={_orderStatusStore[o.id]||o.status}/></td>
+                <td style={{padding:"13px 18px"}}><Badge status={o.status}/></td>
               </tr>
             ))}</tbody>
           </table>
@@ -6153,13 +6287,14 @@ function VentrylPlatform({bp, user, onSignOut}) {
       const orderId=activeView.replace("order:","");
       return <BuyerOrderDetail orderId={orderId} onBack={goBack} isMobile={isMobile}/>;
     }
-    if(activeView==="admin") return <AdminPanel isMobile={isMobile}/>;
+    if(activeView==="admin"&&isAdmin) return <AdminPanel isMobile={isMobile}/>;
     const map={
       dash:<UnifiedDash depots={depots} onOrder={()=>navigate("order_form")} onDepotClick={id=>navigate(`depot:${id}`)} onNewDepot={handleNewDepot} onViewOrder={id=>{
-          // Check if the id belongs to a depot inbox order (not a buyer order)
+          // Buyer orders always open the buyer tracking view
+          if(buyerOrders.some(o=>o.id===id)){navigate(`order:${id}`);return;}
+          // Only route to depot view if it's an incoming depot order (not the user's own purchase)
           const allDepotOrderIds=Object.values(useVentrylStore.getState().depotOrders||{}).flat().map(o=>o.id);
-          const isIncoming=INCOMING.some(o=>o.id===id)||allDepotOrderIds.includes(id);
-          if(isIncoming){const d=depots.find(d=>d.kyb==="verified")||depots[0];if(d){navigate(`depot_order:${id}:${d.id}`);return;}}
+          if(allDepotOrderIds.includes(id)){const d=depots.find(d=>d.kyb==="verified")||depots[0];if(d){navigate(`depot_order:${id}:${d.id}`);return;}}
           navigate(`order:${id}`);
         }} isMobile={isMobile}/>,
       market:<BuyerMarketplace onOrder={()=>navigate("order_form")} isMobile={isMobile}/>,
@@ -6174,12 +6309,12 @@ function VentrylPlatform({bp, user, onSignOut}) {
   const isAdmin=!!user?.isAdmin;
   const pendingKyb=depots.filter(d=>d.kyb!=="verified").length;
   const pills=[
-    {bg:T.greenLight,color:T.greenDark,label:"KYB ✓"},
-    {bg:T.gray50,color:T.black,label:"₦25.8M"},
+    authProfile?.kyc_status==="approved"?{bg:T.greenLight,color:T.greenDark,label:"KYC ✓"}:null,
+    walletNGN?{bg:T.gray50,color:T.black,label:`₦${(walletNGN.balanceNGN/1e6).toFixed(1)}M`}:null,
     pendingKyb?{bg:T.amberLight,color:"#8A5C00",label:`${pendingKyb} KYB pending`}:{bg:T.gray50,color:T.black,label:`${depots.length} depot${depots.length!==1?"s":""}`},
-  ];
+  ].filter(Boolean);
 
-  const IDENTITY=user||{initials:"EC",bg:T.green,textColor:T.black,name:"Emeka Chukwuma",role:"Account Owner"};
+  const IDENTITY=user||{initials:(authProfile?.full_name||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase(),bg:T.green,textColor:T.black,name:authProfile?.full_name||"User",role:"Account Owner"};
   return (
     <div style={{display:"flex",minHeight:"100vh",fontFamily:F}}>
       {KYC_GATE_MODAL}

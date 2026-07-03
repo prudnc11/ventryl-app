@@ -121,6 +121,7 @@ function adaptOwnerDepot(row) {
     name: row.name,
     location: row.location || `${row.lga || ''}, ${row.state || ''}`.replace(/^, /, ''),
     kyb: row.kyb_status || 'pending',
+    kybRejectionReason: row.kyb_rejection_reason || null,
     license: row.license_number || '',
     capacity: row.capacity || 0,
     orders: row.total_orders || 0,
@@ -158,14 +159,13 @@ function adaptPriceHistory(rows) {
 
 /** wallet row + transaction rows → NGN wallet shape */
 function adaptWalletNGN(walletRow, txnRows) {
-  const balance = walletRow?.balance ?? 0;        // kobo
-  const escrowBalance = walletRow?.escrow_balance ?? 0; // kobo
+  const balanceNGN = parseFloat(walletRow?.balance_ngn ?? 0);
   const txn = (txnRows || []).map(t => {
-    const amtNGN = t.amount / 100;
-    const isCredit = ['topup', 'escrow_refund', 'order_credit'].includes(t.type);
-    const isDebit = ['escrow_lock'].includes(t.type);
+    const amtNGN = parseFloat(t.amount || 0);
+    const isCredit = ['credit', 'release'].includes(t.type);
+    const isDebit  = ['debit', 'hold', 'fee'].includes(t.type);
     return {
-      id: t.ref || t.id,
+      id: t.reference || t.id,
       desc: t.description || t.type,
       amount: `${isCredit ? '+' : isDebit ? '-' : ''}₦${amtNGN.toLocaleString('en-NG')}`,
       date: fmtDate(t.created_at) || '',
@@ -173,9 +173,9 @@ function adaptWalletNGN(walletRow, txnRows) {
     };
   });
   return {
-    balance,       // in kobo — divide by 100 for display
-    escrowBalance,
-    balanceNGN: balance / 100,
+    balanceNGN,
+    balance: balanceNGN * 100,  // kept for legacy references
+    escrowBalance: 0,
     txn,
   };
 }
@@ -192,6 +192,7 @@ function adaptOrderDetail(row) {
   const trucks_detail = trucks.length
     ? trucks.map((t, i) => ({
         id: `T${i + 1}`,
+        _dbId: t.id,           // real UUID from order_trucks — used for per-truck DB updates
         driver: t.driver_name || 'TBD',
         plate: t.plate || 'TBD',
         vol: t.volume || Math.ceil(row.total_volume / (row.trucks_count || 1)),
@@ -208,10 +209,13 @@ function adaptOrderDetail(row) {
         status: row.status === 'in_transit' ? 'in_transit' : row.status,
       }));
 
+  const buyerId = row.buyer_id;
   const timeline = logs.map(log => ({
+    from: log.from_status || null,
+    to: log.to_status || null,
+    note: log.note || null,
     time: fmtDateTime(log.created_at) || '',
-    event: log.note || `${log.from_status || '—'} → ${log.to_status}`,
-    actor: 'system',
+    actor: log.actor_id ? (log.actor_id === buyerId ? 'buyer' : 'depot') : 'system',
   }));
 
   const products = items.length > 1
@@ -226,6 +230,7 @@ function adaptOrderDetail(row) {
     : null;
 
   return {
+    status: row.status || 'pending',
     buyer: {
       name: buyer.full_name || '',
       company: buyer.company_name || '',
@@ -350,11 +355,13 @@ export const useVentrylStore = create((set, get) => ({
   async loadWallet(userId) {
     if (!userId) return;
     try {
-      const [{ data: walletRow }, { data: txnRows }] = await Promise.all([
-        supabase.from('wallets').select('*').eq('user_id', userId).maybeSingle(),
-        supabase.from('transactions').select('*').eq('user_id', userId)
-          .order('created_at', { ascending: false }).limit(50),
-      ]);
+      const { data: walletRow } = await supabase
+        .from('wallets').select('*').eq('user_id', userId).maybeSingle();
+      const walletId = walletRow?.id;
+      const { data: txnRows } = walletId
+        ? await supabase.from('transactions').select('*').eq('wallet_id', walletId)
+            .order('created_at', { ascending: false }).limit(50)
+        : { data: [] };
       set({ walletNGN: adaptWalletNGN(walletRow, txnRows) });
     } catch (e) {
       console.error('[ventrylStore] loadWallet', e.message);
