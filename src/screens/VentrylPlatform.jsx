@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, lazy, Suspense, Component } from "react";
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { T, F, GLOBAL_STYLES } from "../lib/tokens";
 import { useAuthStore } from "../store/authStore";
@@ -9,6 +9,31 @@ import { PlatformSidebar } from "../components/layout/PlatformSidebar";
 import { Topbar } from "../components/shared";
 import { DepotContext } from "../context/DepotContext";
 import { AdminPanel } from "./AdminPanel";
+
+// ── Error Boundary ──────────────────────────────────────────────────────────
+class ErrorBoundary extends Component {
+  state = { hasError: false, error: null };
+  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  componentDidCatch(error, info) { console.error("[ErrorBoundary]", error, info); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", fontFamily: F }}>
+          <div style={{ textAlign: "center", maxWidth: "400px", padding: "20px" }}>
+            <div style={{ width: "44px", height: "44px", background: T.redLight, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", fontSize: "20px" }}>!</div>
+            <div style={{ fontSize: "14px", fontWeight: 800, color: T.black, marginBottom: "8px" }}>Something went wrong</div>
+            <div style={{ fontSize: "12px", color: T.gray400, marginBottom: "16px", lineHeight: 1.5 }}>{this.state.error?.message || "An unexpected error occurred."}</div>
+            <button onClick={() => { this.setState({ hasError: false, error: null }); window.location.href = "/"; }}
+              style={{ background: T.black, color: T.white, border: "none", padding: "10px 20px", fontSize: "12px", fontWeight: 800, cursor: "pointer", fontFamily: F }}>
+              Back to Dashboard
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ── Code-split routes (lazy loaded) ─────────────────────────────────────────
 const UnifiedDash       = lazy(() => import("./UnifiedDash").then(m => ({ default: m.UnifiedDash })));
@@ -193,21 +218,23 @@ export function VentrylPlatform({ bp, user, onSignOut }) {
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
           <Topbar crumb={getCrumb()} isMobile={isMobile} portalLabel="Platform" pills={pills} />
           <div style={{ padding: isMobile ? "14px 16px" : "24px 28px", paddingBottom: isMobile ? "80px" : "24px", flex: 1, overflowY: "auto" }}>
-            <Suspense fallback={<PageLoader />}>
-              <Routes>
-                <Route index element={<UnifiedDash onOrder={() => navigate("/place-order")} onDepotClick={id => navigate(`/depot/${id}`)} onNewDepot={handleNewDepot} onViewOrder={id => navigate(`/orders/${id}`)} isMobile={isMobile} />} />
-                <Route path="market" element={<BuyerMarketplace onOrder={() => navigate("/place-order")} isMobile={isMobile} />} />
-                <Route path="orders" element={<OrdersListView isMobile={isMobile} />} />
-                <Route path="orders/:id" element={<BuyerOrderDetail isMobile={isMobile} />} />
-                <Route path="wallet" element={<BuyerWallet isMobile={isMobile} />} />
-                <Route path="place-order" element={<OrderFlow onDone={() => navigate("/")} isMobile={isMobile} />} />
-                <Route path="settings" element={<SettingsModule portalType="buyer" isMobile={isMobile} />} />
-                <Route path="depot/new" element={<CreateDepotFlow onCreateDepot={handleCreateDepot} onDone={id => navigate(id ? `/depot/${id}` : "/")} onCancel={() => navigate(-1)} isMobile={isMobile} />} />
-                <Route path="depot/:id" element={<DepotDetailView onViewOrder={(orderId, depotId) => navigate(`/depot/${depotId}/order/${orderId}`)} isMobile={isMobile} />} />
-                <Route path="depot/:depotId/order/:orderId" element={<DepotOrderDetail isMobile={isMobile} />} />
-                {isAdmin && <Route path="admin" element={<AdminPanel isMobile={isMobile} />} />}
-              </Routes>
-            </Suspense>
+            <ErrorBoundary>
+              <Suspense fallback={<PageLoader />}>
+                <Routes>
+                  <Route index element={<UnifiedDash onOrder={() => navigate("/place-order")} onDepotClick={id => navigate(`/depot/${id}`)} onNewDepot={handleNewDepot} onViewOrder={id => navigate(`/orders/${id}`)} isMobile={isMobile} />} />
+                  <Route path="market" element={<BuyerMarketplace onOrder={() => navigate("/place-order")} isMobile={isMobile} />} />
+                  <Route path="orders" element={<OrdersListView isMobile={isMobile} />} />
+                  <Route path="orders/:id" element={<BuyerOrderDetail isMobile={isMobile} />} />
+                  <Route path="wallet" element={<BuyerWallet isMobile={isMobile} />} />
+                  <Route path="place-order" element={<OrderFlow onDone={() => navigate("/")} isMobile={isMobile} />} />
+                  <Route path="settings" element={<SettingsModule portalType="buyer" isMobile={isMobile} />} />
+                  <Route path="depot/new" element={<CreateDepotFlow onCreateDepot={handleCreateDepot} onDone={id => navigate(id ? `/depot/${id}` : "/")} onCancel={() => navigate(-1)} isMobile={isMobile} />} />
+                  <Route path="depot/:id" element={<DepotDetailView onViewOrder={(orderId, depotId) => navigate(`/depot/${depotId}/order/${orderId}`)} isMobile={isMobile} />} />
+                  <Route path="depot/:depotId/order/:orderId" element={<DepotOrderDetail isMobile={isMobile} />} />
+                  {isAdmin && <Route path="admin" element={<AdminPanel isMobile={isMobile} />} />}
+                </Routes>
+              </Suspense>
+            </ErrorBoundary>
           </div>
         </div>
         {isMobile && (
