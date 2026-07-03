@@ -38,7 +38,7 @@ export const useAuthStore = create((set, get) => ({
       set({ loading: false });
     }
 
-    supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session) {
         const profile = await fetchProfile(session.user.id);
         set({ session, user: session.user, profile });
@@ -46,6 +46,8 @@ export const useAuthStore = create((set, get) => ({
         set({ session: null, user: null, profile: null });
       }
     });
+    // Store unsubscribe so it can be cleaned up if needed
+    set({ _authSubscription: subscription });
   },
 
   /** Update local profile cache after edits */

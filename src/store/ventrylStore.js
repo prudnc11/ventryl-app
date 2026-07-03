@@ -357,14 +357,15 @@ export const useVentrylStore = create((set, get) => ({
   async loadWallet(userId) {
     if (!userId) return;
     try {
-      const { data: walletRow } = await supabase
-        .from('wallets').select('*').eq('user_id', userId).maybeSingle();
-      const walletId = walletRow?.id;
-      const { data: txnRows } = walletId
-        ? await supabase.from('transactions').select('*').eq('wallet_id', walletId)
-            .order('created_at', { ascending: false }).limit(50)
-        : { data: [] };
-      set({ walletNGN: adaptWalletNGN(walletRow, txnRows) });
+      const { data } = await supabase
+        .from('wallets')
+        .select('*, transactions(*)')
+        .eq('user_id', userId)
+        .order('created_at', { referencedTable: 'transactions', ascending: false })
+        .limit(50, { referencedTable: 'transactions' })
+        .maybeSingle();
+      const txnRows = data?.transactions || [];
+      set({ walletNGN: adaptWalletNGN(data, txnRows) });
     } catch (e) {
       console.error('[ventrylStore] loadWallet', e.message);
     }
@@ -373,8 +374,9 @@ export const useVentrylStore = create((set, get) => ({
   // ── Order detail cache ──────────────────────────────────────────────────────
   orderDetails: {},  // orderId → adapted meta object
 
-  async loadOrderDetail(orderId) {
-    if (!orderId || get().orderDetails[orderId]) return;
+  async loadOrderDetail(orderId, force = false) {
+    if (!orderId) return;
+    if (!force && get().orderDetails[orderId]) return;
     try {
       const row = await ordersApi.get(orderId);
       set(s => ({

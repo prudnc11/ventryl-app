@@ -26,9 +26,10 @@ const F = "'Manrope', sans-serif";
 function useBreakpoint() {
   const [w, setW] = useState(typeof window !== "undefined" ? window.innerWidth : 1200);
   useEffect(() => {
-    const fn = () => setW(window.innerWidth);
+    let timer;
+    const fn = () => { clearTimeout(timer); timer = setTimeout(() => setW(window.innerWidth), 150); };
     window.addEventListener("resize", fn);
-    return () => window.removeEventListener("resize", fn);
+    return () => { window.removeEventListener("resize", fn); clearTimeout(timer); };
   }, []);
   return { isMobile: w < 768, isTablet: w >= 768 && w < 1024, isDesktop: w >= 1024, width: w };
 }
@@ -6380,7 +6381,7 @@ function VentrylPlatform({bp, user, onSignOut}) {
 /* ════════════════════════════════════════════
    ROOT
 ════════════════════════════════════════════ */
-const GLOBAL_STYLES=`@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap'); *{box-sizing:border-box;margin:0;padding:0;} ::-webkit-scrollbar{width:4px;} ::-webkit-scrollbar-thumb{background:#D3D3D3;} input[type=range]{-webkit-appearance:none;appearance:none;height:4px;background:#EBEBEB;border-radius:2px;outline:none;} input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;background:#000;border-radius:50%;cursor:pointer;} input[type=number]::-webkit-inner-spin-button{opacity:1;} @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.7}}`;
+const GLOBAL_STYLES=`*{box-sizing:border-box;margin:0;padding:0;} ::-webkit-scrollbar{width:4px;} ::-webkit-scrollbar-thumb{background:#D3D3D3;} input[type=range]{-webkit-appearance:none;appearance:none;height:4px;background:#EBEBEB;border-radius:2px;outline:none;} input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;background:#000;border-radius:50%;cursor:pointer;} input[type=number]::-webkit-inner-spin-button{opacity:1;} @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.7}}`;
 
 function LoadingScreen() {
   return (

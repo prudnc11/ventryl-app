@@ -388,7 +388,7 @@ export const orders = {
         .eq('id', orderId)
         .single();
       if (order) {
-        await wallet._refund(order.buyer_id, order.total_value + order.platform_fee + order.vat, orderId);
+        await wallet._refund(order.buyer_id, order.total_value + order.platform_fee + order.vat, orderId, toStatus);
       }
     }
   },
@@ -560,7 +560,7 @@ export const wallet = {
   },
 
   /** Internal: refund buyer on rejection/cancellation */
-  async _refund(userId, amount, orderId) {
+  async _refund(userId, amount, orderId, reason = 'cancelled') {
     const { data: w } = await supabase
       .from('wallets')
       .select('id, balance_ngn')
@@ -572,7 +572,7 @@ export const wallet = {
       .eq('id', w.id);
     await supabase.from('transactions').insert({
       wallet_id: w.id, type: 'credit', amount,
-      description: `Order ${orderId} — Refund (order ${orderId.includes('reject') ? 'rejected' : 'cancelled'})`,
+      description: `Order ${orderId} — Refund (order ${reason})`,
       order_id: orderId,
     });
   },
@@ -735,19 +735,26 @@ export const prices = {
   /** Get latest price for each product */
   async getCurrent() {
     const products = ['PMS', 'AGO', 'DPK', 'LPG', 'ATK'];
-    const results = await Promise.all(
-      products.map(async (product) => {
-        const { data } = await supabase
-          .from('price_history')
-          .select('price, recorded_at')
-          .eq('product', product)
-          .order('recorded_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        return { product, price: data?.price ?? null, date: data?.recorded_at ?? null };
-      })
-    );
-    return results;
+    const { data, error } = await supabase
+      .from('price_history')
+      .select('product, price, recorded_at')
+      .in('product', products)
+      .order('recorded_at', { ascending: false });
+    assertOk(error, 'prices.getCurrent');
+    // Pick the first (latest) row per product
+    const seen = new Set();
+    const latest = [];
+    for (const row of (data || [])) {
+      if (!seen.has(row.product)) {
+        seen.add(row.product);
+        latest.push({ product: row.product, price: row.price, date: row.recorded_at });
+      }
+    }
+    // Fill nulls for any products with no history
+    for (const p of products) {
+      if (!seen.has(p)) latest.push({ product: p, price: null, date: null });
+    }
+    return latest;
   },
 };
 
