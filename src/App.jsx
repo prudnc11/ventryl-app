@@ -246,7 +246,7 @@ function Topbar({crumb,pills,isMobile,onMenuToggle,portalLabel}) {
 function OrderFlow({onDone,isMobile}) {
   const {user:authUser}=useAuthStore();
   const {loadBuyerOrders,marketDepots,marketDepotsLoaded,loadMarketDepots,walletNGN,loadWallet}=useVentrylStore();
-  useEffect(()=>{if(!marketDepotsLoaded)loadMarketDepots();},[]);
+  useEffect(()=>{loadMarketDepots();},[]);
   useEffect(()=>{if(authUser?.id&&!walletNGN)loadWallet(authUser.id);},[authUser?.id]);
   const [step,setStep]=useState(1);
   const [sel,setSel]=useState(null);
@@ -849,7 +849,7 @@ function BuyerDash({onOrder,isMobile}) {
 function BuyerMarketplace({onOrder,isMobile}) {
   const [sort,setSort]=useState("price");
   const {marketDepots,marketDepotsLoaded,loadMarketDepots}=useVentrylStore();
-  useEffect(()=>{if(!marketDepotsLoaded)loadMarketDepots();},[]);
+  useEffect(()=>{loadMarketDepots();},[]);
   const source=marketDepots||[];
   const hasAnyPrice=d=>d.pms!=null||d.ago!=null||d.dpk!=null||d.lpg!=null||d.atk!=null;
   const lowestPrice=d=>Math.min(...[d.pms,d.ago,d.dpk,d.lpg,d.atk].filter(v=>v!=null));
@@ -3722,7 +3722,7 @@ function DepotDetailView({depot,onUpdateDepot,onViewOrder,isMobile}) {
 ════════════════════════════════════════════ */
 function MarketPulseWidget({onOrder}) {
   const {marketDepots,marketDepotsLoaded,loadMarketDepots}=useVentrylStore();
-  useEffect(()=>{if(!marketDepotsLoaded)loadMarketDepots();},[]);
+  useEffect(()=>{loadMarketDepots();},[]);
   const depotsSource=marketDepots||[];
   const PRODUCTS=[
     {key:"pms",  name:"PMS",  fullName:"Premium Motor Spirit", unit:"/L", change:+2.1, color:T.green},
@@ -6090,7 +6090,7 @@ function PlatformSidebar({activeView,setActiveView,depots,onNewDepot,identity,is
 function VentrylPlatform({bp, user, onSignOut}) {
   const {isMobile}=bp;
   const {user:authUser,profile:authProfile}=useAuthStore();
-  const {ownerDepots,ownerDepotsLoaded,loadOwnerDepots,buyerOrders,buyerOrdersLoaded,loadBuyerOrders,priceHistory,loadPriceHistory,walletNGN,loadWallet}=useVentrylStore();
+  const {ownerDepots,ownerDepotsLoaded,loadOwnerDepots,loadMarketDepots,buyerOrders,buyerOrdersLoaded,loadBuyerOrders,priceHistory,loadPriceHistory,walletNGN,loadWallet}=useVentrylStore();
   const [activeView,setActiveView]=useState("dash");
   const [creatingDepot,setCreatingDepot]=useState(false);
   const [showKycGate,setShowKycGate]=useState(false);
@@ -6174,8 +6174,9 @@ function VentrylPlatform({bp, user, onSignOut}) {
       }
     }
 
-    // Refresh from DB to get server truth
+    // Refresh from DB to get server truth — also bust marketplace cache so buyers see updated prices
     if(authUser?.id) loadOwnerDepots(authUser.id);
+    loadMarketDepots();
   };
 
   const [navHistory,setNavHistory]=useState([]);
