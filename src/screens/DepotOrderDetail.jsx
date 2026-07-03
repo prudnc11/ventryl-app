@@ -14,6 +14,7 @@ import { printWaybill, printInvoice } from "../lib/documents";
 import { openPaystackPopup, verifyAndCreditWallet, FUND_PRESETS } from "../lib/payment";
 import { useOrderRealtime, useDepotInboxRealtime, useProfileRealtime } from "../lib/realtime";
 import { useDepotContext } from "../context/DepotContext";
+import { DisputeModal } from "./BuyerOrderDetail";
 
 function DepotOrderDetail({isMobile}) {
   const navigate = useNavigate();

@@ -8,6 +8,7 @@ const STATUS_CFG = {
   loading:{label:"Loading",bg:T.gray100,color:T.gray600},
   disputed:{label:"Disputed",bg:T.redLight,color:T.red},
   pending:{label:"Pending",bg:T.gray100,color:T.gray600},
+  collected:{label:"Collected",bg:T.greenLight,color:T.greenDark},
   open:{label:"Available",bg:T.greenLight,color:T.greenDark},
 };
 

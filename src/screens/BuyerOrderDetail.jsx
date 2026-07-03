@@ -1236,4 +1236,4 @@ function BuyerOrderDetail({isMobile}) {
   );
 }
 
-export { BuyerOrderDetail };
+export { BuyerOrderDetail, DisputeModal };
