@@ -247,6 +247,7 @@ function BuyerOrderDetail({isMobile}) {
   const onBack = () => navigate(-1);
   const {buyerOrders,orderDetails,loadOrderDetail,invalidateOrderDetail,loadBuyerOrders}=useVentrylStore();
   const {user:authUser}=useAuthStore();
+  const [loading,setLoading]=useState(true);
   const order=buyerOrders.find(o=>o.id===orderId);
   const meta=orderDetails[orderId]||{};
 
@@ -280,10 +281,13 @@ function BuyerOrderDetail({isMobile}) {
 
   // Always load fresh detail from DB on mount (invalidate stale cache)
   useEffect(()=>{
+    setLoading(true);
     invalidateOrderDetail(orderId);
-    loadOrderDetail(orderId);
-    if(authUser?.id) loadBuyerOrders(authUser.id);
-    loadNeg();
+    Promise.all([
+      loadOrderDetail(orderId),
+      authUser?.id ? loadBuyerOrders(authUser.id) : Promise.resolve(),
+      loadNeg(),
+    ]).finally(()=>setLoading(false));
   },[orderId]);
 
   // Sync liveStatus + negotiation from loaded data (covers page-load and post-reload cases)
@@ -358,6 +362,12 @@ function BuyerOrderDetail({isMobile}) {
       reloadOrderDetail.current?.();
     }catch(e){console.error("Counter offer error:",e);}
   };
+
+  if(loading) return (
+    <div style={{padding:"40px",textAlign:"center"}}>
+      <div style={{fontSize:"14px",fontWeight:700,color:T.gray400}}>Loading order…</div>
+    </div>
+  );
 
   if(!order) return (
     <div style={{padding:"40px",textAlign:"center"}}>
