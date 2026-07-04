@@ -59,12 +59,11 @@ function UnifiedDash({onOrder,onDepotClick,onNewDepot,onViewOrder,isMobile}) {
         const fmtSpend=totalSpend>=1e6?`₦${(totalSpend/1e6).toFixed(1)}M spend`:totalSpend>0?`₦${totalSpend.toLocaleString("en-NG")} spend`:"No spend yet";
         const mtdSub=[deliveredCount?`${deliveredCount} delivered`:null,transitCount?`${transitCount} in transit`:null].filter(Boolean).join(" · ")||"No orders yet";
         return (
-        <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(4,1fr)",gap:"1px",background:T.gray100,border:`1px solid ${T.gray100}`}}>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(3,1fr)",gap:"1px",background:T.gray100,border:`1px solid ${T.gray100}`}}>
         {[
           {l:"Orders This Month",v:`${mtdOrders.length}`,sub:mtdSub},
-          {l:"Total Volume Bought",v:totalVol>0?fmtVol:"—",sub:fmtSpend},
-          {l:"Active Depots",v:`${verified.length||"—"}`,sub:pending.length>0?`${pending.length} awaiting KYB`:"All verified",alert:pending.length>0},
-          {l:"Your Depots",v:`${depots.length||"—"}`,sub:verified.length>0?`${verified.length} verified`:"Register a depot"},
+          {l:"Active Orders",v:`${(()=>{const active=allOrders.filter(o=>o.status!=="delivered"&&o.status!=="collected"&&o.status!=="cancelled"&&o.status!=="rejected");return active.length;})()}`,sub:(()=>{const active=allOrders.filter(o=>o.status!=="delivered"&&o.status!=="collected"&&o.status!=="cancelled"&&o.status!=="rejected");const t=active.filter(o=>o.status==="in_transit").length;const l=active.filter(o=>o.status==="loading").length;return [t?`${t} in transit`:null,l?`${l} loading`:null].filter(Boolean).join(" · ")||"None in progress";})()},
+          {l:"Active Depots",v:`${verified.length||"—"}`,sub:pending.length>0?`${pending.length} awaiting KYB`:depots.length===0?"Register a depot":"All verified",alert:pending.length>0},
         ].map(k=><KpiCard key={k.l} label={k.l} value={k.v} sub={k.sub} alert={k.alert}/>)}
       </div>
       );})()}
