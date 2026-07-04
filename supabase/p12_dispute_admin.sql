@@ -15,3 +15,20 @@ CREATE POLICY "disputes:admin:update"
   ON disputes FOR UPDATE
   USING (is_admin())
   WITH CHECK (is_admin());
+
+-- Depot owner can update disputes on their orders (resolve)
+DROP POLICY IF EXISTS "disputes:depot:update" ON disputes;
+CREATE POLICY "disputes:depot:update"
+  ON disputes FOR UPDATE
+  USING (
+    order_id IN (
+      SELECT id FROM orders
+      WHERE depot_id IN (SELECT id FROM depots WHERE owner_id = auth.uid())
+    )
+  )
+  WITH CHECK (
+    order_id IN (
+      SELECT id FROM orders
+      WHERE depot_id IN (SELECT id FROM depots WHERE owner_id = auth.uid())
+    )
+  );

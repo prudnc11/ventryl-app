@@ -81,6 +81,40 @@ function DepotOrderDetail({isMobile}) {
   const [showDispute,setShowDispute]=useState(false);
   const [activeTab,setActiveTab]=useState("manage");
 
+  // Dispute resolution state
+  const [disputeData,setDisputeData]=useState(null);
+  const [disputeNote,setDisputeNote]=useState("");
+  const [disputeResolveAs,setDisputeResolveAs]=useState("delivered");
+  const [resolvingDispute,setResolvingDispute]=useState(false);
+  const [disputeError,setDisputeError]=useState(null);
+
+  // Load dispute details when order is disputed
+  useEffect(()=>{
+    if(liveStatus==="disputed"&&orderId){
+      (async()=>{
+        const {data}=await supabase.from("disputes").select("*").eq("order_id",orderId).order("created_at",{ascending:false}).limit(1).maybeSingle();
+        if(data) setDisputeData(data);
+      })();
+    }
+  },[liveStatus,orderId]);
+
+  const DISPUTE_REASONS={quantity_short:"Quantity Shortage",quality_issue:"Quality Issue",late_delivery:"Late Delivery",wrong_product:"Wrong Product",damaged_goods:"Damaged Goods",pricing_error:"Pricing Error",other:"Other"};
+
+  const handleResolveDispute=async()=>{
+    if(!disputeData) return;
+    setResolvingDispute(true);setDisputeError(null);
+    try{
+      // 1. Update dispute status
+      await supabase.from("disputes").update({status:"resolved",admin_note:disputeNote||"Resolved by depot",resolved_at:new Date().toISOString()}).eq("id",disputeData.id);
+      // 2. Update order status back
+      await ordersApi.updateStatus(orderId,disputeResolveAs,{actorId:authUser?.id,note:`Dispute resolved by depot. ${disputeNote}`.trim()});
+      // 3. Reload
+      reloadOrder();
+      setDisputeData(d=>d?{...d,status:"resolved"}:d);
+    }catch(e){setDisputeError(e.message);}
+    finally{setResolvingDispute(false);}
+  };
+
   // Sync bay input with live value when meta loads
   useEffect(()=>{if(liveBay)setBay(liveBay);},[liveBay]);
 
@@ -263,15 +297,76 @@ function DepotOrderDetail({isMobile}) {
       )}
 
       {isDisputed&&(
-        <div style={{background:T.amberLight,border:`2px solid #D97706`,padding:"16px 18px",marginBottom:"14px",display:"flex",alignItems:"center",gap:"14px"}}>
-          <div style={{width:"40px",height:"40px",borderRadius:"50%",background:"#FEF3C7",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"20px",flexShrink:0,border:"2px solid #D97706"}}>⚠</div>
-          <div style={{flex:1}}>
-            <div style={{fontSize:"14px",fontWeight:800,color:"#92400E"}}>Dispute Filed by Buyer</div>
-            <div style={{fontSize:"11px",color:"#92400E",marginTop:"3px",lineHeight:1.5}}>
-              The buyer has raised a dispute on this order. Ventryl's team will review and resolve within 24–48 hours. You will be notified of the outcome.
+        <Card style={{marginBottom:"14px",padding:0,overflow:"hidden"}}>
+          <div style={{background:"#3A1F0A",padding:"16px 18px",display:"flex",alignItems:"center",gap:"14px"}}>
+            <div style={{width:"40px",height:"40px",borderRadius:"50%",background:"#FEF3C7",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"20px",flexShrink:0,border:"2px solid #D97706"}}>⚠</div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:"14px",fontWeight:800,color:"#FBBF24"}}>Dispute Filed by Buyer</div>
+              <div style={{fontSize:"11px",color:"#D4A574",marginTop:"3px",lineHeight:1.5}}>
+                Review the details below and resolve this dispute, or wait for Ventryl admin to mediate.
+              </div>
             </div>
+            <span style={{background:T.red,color:T.white,fontSize:"9px",fontWeight:800,padding:"3px 8px",letterSpacing:"0.06em",flexShrink:0}}>ACTION</span>
           </div>
-        </div>
+
+          {/* Dispute details */}
+          <div style={{padding:"16px 18px"}}>
+            {disputeData?(
+              <>
+                <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr",gap:"10px",marginBottom:"14px"}}>
+                  {[["Reference",disputeData.reference],["Reason",DISPUTE_REASONS[disputeData.reason]||disputeData.reason],["Filed",new Date(disputeData.created_at).toLocaleDateString("en-NG")]].map(([l,v])=>(
+                    <div key={l} style={{background:T.gray50,padding:"10px 12px",border:`1px solid ${T.gray100}`}}>
+                      <div style={{fontSize:"9px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"2px"}}>{l}</div>
+                      <div style={{fontSize:"12px",fontWeight:700,color:T.black}}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{background:T.gray50,padding:"10px 12px",border:`1px solid ${T.gray100}`,marginBottom:"14px"}}>
+                  <div style={{fontSize:"9px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"4px"}}>Buyer's Description</div>
+                  <div style={{fontSize:"12px",color:T.black,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{disputeData.details}</div>
+                </div>
+                {disputeData.evidence_urls&&disputeData.evidence_urls.length>0&&(
+                  <div style={{marginBottom:"14px"}}>
+                    <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"6px"}}>Evidence ({disputeData.evidence_urls.length} file{disputeData.evidence_urls.length!==1?"s":""})</div>
+                    <div style={{display:"flex",gap:"8px",flexWrap:"wrap"}}>
+                      {disputeData.evidence_urls.map((url,i)=>(
+                        <a key={i} href={url} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:"6px",background:T.blueLight,border:`1px solid ${T.blue}20`,padding:"7px 12px",fontSize:"11px",fontWeight:700,color:T.blue,textDecoration:"none"}}>
+                          📎 File {i+1} — View
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Resolution form */}
+                <div style={{borderTop:`1px solid ${T.gray100}`,paddingTop:"14px"}}>
+                  <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"6px"}}>Resolution Note</div>
+                  <textarea value={disputeNote} onChange={e=>setDisputeNote(e.target.value)}
+                    placeholder="Describe how you're resolving this dispute…"
+                    style={{width:"100%",border:`1px solid ${T.gray200}`,padding:"10px 12px",fontFamily:F,fontSize:"12px",minHeight:"60px",resize:"vertical",outline:"none",boxSizing:"border-box",marginBottom:"10px"}}/>
+                  <div style={{marginBottom:"12px"}}>
+                    <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"6px"}}>Resolve Order As</div>
+                    <div style={{display:"flex",gap:"6px"}}>
+                      {[["delivered","Delivered"],["collected","Collected"]].map(([val,label])=>(
+                        <button key={val} onClick={()=>setDisputeResolveAs(val)}
+                          style={{background:disputeResolveAs===val?T.black:T.white,color:disputeResolveAs===val?T.white:T.gray600,border:`1px solid ${disputeResolveAs===val?T.black:T.gray200}`,padding:"6px 14px",fontSize:"11px",fontWeight:700,cursor:"pointer",fontFamily:F}}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {disputeError&&<div style={{background:T.redLight,border:`1px solid ${T.red}`,padding:"8px 12px",marginBottom:"10px",fontSize:"11px",color:T.red,fontWeight:700}}>{disputeError}</div>}
+                  <button disabled={resolvingDispute||!disputeNote.trim()} onClick={handleResolveDispute}
+                    style={{background:disputeNote.trim()?T.green:T.gray200,color:disputeNote.trim()?T.white:T.gray400,border:"none",padding:"12px",fontSize:"13px",fontWeight:800,cursor:disputeNote.trim()?"pointer":"not-allowed",fontFamily:F,width:"100%",minHeight:"46px"}}>
+                    {resolvingDispute?"Resolving…":"Resolve Dispute ✓"}
+                  </button>
+                </div>
+              </>
+            ):(
+              <div style={{fontSize:"12px",color:T.gray400}}>Loading dispute details…</div>
+            )}
+          </div>
+        </Card>
       )}
 
       {/* ── ACTION PANEL — one focused card per stage ── */}
@@ -695,18 +790,6 @@ function DepotOrderDetail({isMobile}) {
         <div style={{background:T.redLight,border:`1px solid ${T.red}`,padding:"14px 18px",marginBottom:"14px"}}>
           <div style={{fontSize:"13px",fontWeight:800,color:T.red}}>Order Rejected</div>
           <div style={{fontSize:"11px",color:T.red,marginTop:"2px"}}>Payment has been returned to the buyer. This order is closed.</div>
-        </div>
-      )}
-
-      {isDisputed&&(
-        <div style={{background:T.amberLight,border:`2px solid #D97706`,padding:"16px 18px",marginBottom:"14px",display:"flex",alignItems:"center",gap:"14px"}}>
-          <div style={{width:"40px",height:"40px",borderRadius:"50%",background:"#FEF3C7",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"20px",flexShrink:0,border:"2px solid #D97706"}}>⚠</div>
-          <div style={{flex:1}}>
-            <div style={{fontSize:"14px",fontWeight:800,color:"#92400E"}}>Dispute Filed by Buyer</div>
-            <div style={{fontSize:"11px",color:"#92400E",marginTop:"3px",lineHeight:1.5}}>
-              A dispute has been filed on this order. Ventryl's team will review and resolve within 24–48 hours.
-            </div>
-          </div>
         </div>
       )}
 
