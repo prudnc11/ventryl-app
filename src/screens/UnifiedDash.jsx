@@ -23,10 +23,10 @@ function UnifiedDash({onOrder,onDepotClick,onNewDepot,onViewOrder,isMobile}) {
   const allOrders=buyerOrders;
   const verified=depots.filter(d=>d.kyb==="verified");
   const pending=depots.filter(d=>d.kyb!=="verified");
-  const hasInbox=verified.length>0;
+  const hasDepots=depots.length>0;
   const chartData=priceHistory;
-  // Aggregate real pending orders across all verified depots
-  const allDepotIncoming=verified.flatMap(d=>depotOrders[d.id]||[]);
+  // Aggregate incoming orders across all user's depots
+  const allDepotIncoming=depots.flatMap(d=>depotOrders[d.id]||[]);
   return (
     <div style={{display:"flex",flexDirection:"column",gap:"14px"}}>
 
@@ -71,7 +71,7 @@ function UnifiedDash({onOrder,onDepotClick,onNewDepot,onViewOrder,isMobile}) {
       {/* ── Main content: left col (Inbox + Orders) · right col (Market Prices) ── */}
       <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1.4fr 1fr",gap:"14px",alignItems:"start"}}>
         <div style={{display:"flex",flexDirection:"column",gap:"14px"}}>
-          {hasInbox&&(
+          {hasDepots&&(
             <OrderInboxPanel incoming={allDepotIncoming} isMobile={isMobile} depot={null} onViewOrder={onViewOrder}/>
           )}
           <Card>

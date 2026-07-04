@@ -85,7 +85,6 @@ export function OrderInboxPanel({incoming,isMobile,depot,onViewOrder}) {
     }catch(err){setPanelError(err.message);}
     finally{setActing(a=>{const n={...a};delete n[orderId];return n;});}
   };
-  if(incoming.length===0) return null;
   return (
     <Card style={{marginBottom:"14px"}} pad={false}>
       <div style={{padding:"14px 16px 0 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:"10px",flexWrap:"wrap"}}>
