@@ -48,14 +48,26 @@ function UnifiedDash({onOrder,onDepotClick,onNewDepot,onViewOrder,isMobile}) {
       </div>
 
       {/* ── KPI strip ── */}
-      <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(4,1fr)",gap:"1px",background:T.gray100,border:`1px solid ${T.gray100}`}}>
+      {(()=>{
+        const now=new Date();const monthStart=new Date(now.getFullYear(),now.getMonth(),1);
+        const mtdOrders=allOrders.filter(o=>new Date(o._raw?.placed_at)>=monthStart);
+        const deliveredCount=mtdOrders.filter(o=>o.status==="delivered"||o.status==="collected").length;
+        const transitCount=mtdOrders.filter(o=>o.status==="in_transit").length;
+        const totalVol=allOrders.reduce((s,o)=>s+o.vol,0);
+        const totalSpend=allOrders.reduce((s,o)=>s+o.value,0);
+        const fmtVol=totalVol>=1e6?`${(totalVol/1e6).toFixed(1)}M L`:totalVol>=1000?`${(totalVol/1000).toFixed(0)}k L`:`${totalVol} L`;
+        const fmtSpend=totalSpend>=1e6?`₦${(totalSpend/1e6).toFixed(1)}M spend`:totalSpend>0?`₦${totalSpend.toLocaleString("en-NG")} spend`:"No spend yet";
+        const mtdSub=[deliveredCount?`${deliveredCount} delivered`:null,transitCount?`${transitCount} in transit`:null].filter(Boolean).join(" · ")||"No orders yet";
+        return (
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(4,1fr)",gap:"1px",background:T.gray100,border:`1px solid ${T.gray100}`}}>
         {[
-          {l:"Orders This Month",v:"7",sub:"3 delivered · 2 in transit"},
-          {l:"Total Volume Bought",v:"363k L",sub:"₦280.5M spend"},
+          {l:"Orders This Month",v:`${mtdOrders.length}`,sub:mtdSub},
+          {l:"Total Volume Bought",v:totalVol>0?fmtVol:"—",sub:fmtSpend},
           {l:"Active Depots",v:`${verified.length||"—"}`,sub:pending.length>0?`${pending.length} awaiting KYB`:"All verified",alert:pending.length>0},
-          {l:"Depot Revenue",v:verified.length>0?"₦218M":"—",sub:"Combined · last 30 days"},
+          {l:"Your Depots",v:`${depots.length||"—"}`,sub:verified.length>0?`${verified.length} verified`:"Register a depot"},
         ].map(k=><KpiCard key={k.l} label={k.l} value={k.v} sub={k.sub} alert={k.alert}/>)}
       </div>
+      );})()}
 
       {/* ── Main content: left col (Inbox + Orders) · right col (Market Prices) ── */}
       <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1.4fr 1fr",gap:"14px",alignItems:"start"}}>

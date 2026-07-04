@@ -214,7 +214,7 @@ function BuyerWallet({isMobile}) {
                 <input type="number" value={withdrawAmt} onChange={e=>setWithdrawAmt(e.target.value)} placeholder="Enter amount"
                   style={{width:"100%",border:`1px solid ${T.gray200}`,padding:"12px 14px",fontFamily:F,fontSize:"15px",fontWeight:700,color:T.black,outline:"none",marginBottom:"16px"}}/>
                 <div style={{background:T.gray50,padding:"10px 14px",fontSize:"11px",color:T.gray400,marginBottom:"20px"}}>
-                  {currency==="NGN"&&"To: GTBank · 0081 234 567 · Chukwuma Fuels"}
+                  {currency==="NGN"&&`To: ${authProfile?.bank_name||"Bank"} · ${authProfile?.bank_account||"—"} · ${authProfile?.company_name||""}`}
                   {currency==="USD"&&"To: Chase · Account ending 4321"}
                   {currency==="USDT"&&"To: TRC-20 wallet · Paste your address below"}
                 </div>

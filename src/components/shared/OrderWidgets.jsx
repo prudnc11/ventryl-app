@@ -10,20 +10,18 @@ export function MarketPulseWidget({onOrder}) {
   useEffect(()=>{loadMarketDepots();},[]);
   const depotsSource=marketDepots||[];
   const PRODUCTS=[
-    {key:"pms",  name:"PMS",  fullName:"Premium Motor Spirit", unit:"/L", change:+2.1, color:T.green},
-    {key:"ago",  name:"AGO",  fullName:"Automotive Gas Oil",   unit:"/L", change:-0.8, color:T.blue},
-    {key:"dpk",  name:"DPK",  fullName:"Dual Purpose Kerosene",unit:"/L", change:+1.4, color:"#9B59B6"},
-    {key:"lpg",  name:"LPG",  fullName:"Liquefied Petroleum Gas",unit:"/kg",change:-0.3,color:T.amber},
-    {key:"atk",  name:"ATK",  fullName:"Aviation Turbine Kerosene",unit:"/L",change:+0.9,color:"#E67E22"},
-    {key:"lpfo", name:"LPFO", fullName:"Low Pour Fuel Oil",    unit:"/L", change:-1.2, color:"#E74C3C"},
-    {key:"hpfo", name:"HPFO", fullName:"High Pour Fuel Oil",   unit:"/L", change:+0.5, color:"#7F8C8D"},
+    {key:"pms",  name:"PMS",  fullName:"Premium Motor Spirit", unit:"/L", color:T.green},
+    {key:"ago",  name:"AGO",  fullName:"Automotive Gas Oil",   unit:"/L", color:T.blue},
+    {key:"dpk",  name:"DPK",  fullName:"Dual Purpose Kerosene",unit:"/L", color:"#9B59B6"},
+    {key:"lpg",  name:"LPG",  fullName:"Liquefied Petroleum Gas",unit:"/kg",color:T.amber},
+    {key:"atk",  name:"ATK",  fullName:"Aviation Turbine Kerosene",unit:"/L",color:"#E67E22"},
   ];
   return (
     <Card style={{padding:0}}>
       <div style={{padding:"14px 16px 12px",borderBottom:`1px solid ${T.gray100}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div>
           <div style={{fontSize:"13px",fontWeight:800,color:T.black}}>Market Prices</div>
-          <div style={{fontSize:"10px",color:T.gray400,marginTop:"1px"}}>7 product types · updated 2 min ago</div>
+          <div style={{fontSize:"10px",color:T.gray400,marginTop:"1px"}}>{depotsSource.length} {depotsSource.length===1?"depot":"depots"} · {PRODUCTS.length} products</div>
         </div>
         <span style={{fontSize:"9px",fontWeight:700,color:T.green,background:T.greenLight,padding:"3px 7px",letterSpacing:"0.04em"}}>● LIVE</span>
       </div>
@@ -44,9 +42,6 @@ export function MarketPulseWidget({onOrder}) {
                     <span style={{fontSize:"12px",fontWeight:800,color:T.black}}>{p.name}</span>
                     <span style={{fontSize:"9px",color:T.gray400,marginLeft:"5px"}}>{p.fullName}</span>
                   </div>
-                  <span style={{fontSize:"9px",fontWeight:700,color:p.change>0?T.red:T.green,background:p.change>0?T.redLight:T.greenLight,padding:"1px 5px",flexShrink:0}}>
-                    {p.change>0?"▲":"▼"}{Math.abs(p.change)}%
-                  </span>
                 </div>
                 <div style={{textAlign:"right",flexShrink:0}}>
                   <span style={{fontSize:"14px",fontWeight:800,color:T.black}}>₦{best.toLocaleString()}</span>

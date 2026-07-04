@@ -17,7 +17,8 @@ import { useDepotContext } from "../context/DepotContext";
 
 function BuyerDash({onOrder,isMobile}) {
   const col2 = isMobile ? "1fr" : "1fr 1.3fr";
-  const {buyerOrders,priceHistory}=useVentrylStore();
+  const {profile:userProfile}=useAuthStore();
+  const {buyerOrders,priceHistory,walletNGN}=useVentrylStore();
   const activeOrders=buyerOrders.filter(o=>o.status!=="delivered"&&o.status!=="collected"&&o.status!=="cancelled"&&o.status!=="rejected");
   return (
     <div>
@@ -26,12 +27,12 @@ function BuyerDash({onOrder,isMobile}) {
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"12px",flexWrap:isMobile?"wrap":"nowrap"}}>
           <div>
             <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:"4px"}}>Buyer Dashboard</div>
-            <div style={{fontSize:isMobile?"20px":"24px",fontWeight:800,color:T.white}}>Chukwuma Fuels Ltd</div>
-            <div style={{fontSize:"11px",color:T.gray400,marginTop:"3px"}}>RC-1092843 · Lagos · KYB ✓</div>
+            <div style={{fontSize:isMobile?"20px":"24px",fontWeight:800,color:T.white}}>{userProfile?.company_name||"Buyer Dashboard"}</div>
+            <div style={{fontSize:"11px",color:T.gray400,marginTop:"3px"}}>{[userProfile?.rc_number,userProfile?.state,userProfile?.kyc_status==="approved"?"KYC ✓":null].filter(Boolean).join(" · ")||"Complete your profile"}</div>
           </div>
           <div style={{textAlign:isMobile?"left":"right"}}>
             <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",marginBottom:"3px"}}>Wallet Balance</div>
-            <div style={{fontSize:isMobile?"22px":"28px",fontWeight:800,color:T.green}}>₦25,830,000</div>
+            <div style={{fontSize:isMobile?"22px":"28px",fontWeight:800,color:T.green}}>{walletNGN?`₦${walletNGN.balanceNGN.toLocaleString('en-NG')}`:"—"}</div>
             <button style={{marginTop:"8px",background:T.green,color:T.black,border:"none",padding:"7px 14px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"36px"}}>+ Fund Wallet</button>
           </div>
         </div>
@@ -39,7 +40,18 @@ function BuyerDash({onOrder,isMobile}) {
 
       {/* KPIs */}
       <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"repeat(4,1fr)",gap:"1px",background:T.gray100,border:`1px solid ${T.gray100}`,marginBottom:"14px"}}>
-        {[{l:"Orders MTD",v:"7",sub:"3 delivered"},{l:"Volume",v:"363k L",sub:"₦280.5M"},{l:"Avg. Price",v:"₦795/L",sub:"PMS · Mar"},{l:"Credit (VCS)",v:"720",sub:"Silver tier"}].map(k=>(
+        {(()=>{
+          const now=new Date();const monthStart=new Date(now.getFullYear(),now.getMonth(),1);
+          const mtd=buyerOrders.filter(o=>new Date(o._raw?.placed_at)>=monthStart);
+          const delivered=mtd.filter(o=>o.status==="delivered"||o.status==="collected").length;
+          const totalVol=buyerOrders.reduce((s,o)=>s+o.vol,0);
+          const totalSpend=buyerOrders.reduce((s,o)=>s+o.value,0);
+          const fmtVol=totalVol>=1e6?`${(totalVol/1e6).toFixed(1)}M L`:totalVol>=1000?`${(totalVol/1000).toFixed(0)}k L`:`${totalVol} L`;
+          const fmtSpend=totalSpend>=1e6?`₦${(totalSpend/1e6).toFixed(1)}M`:totalSpend>0?`₦${totalSpend.toLocaleString("en-NG")}`:"—";
+          const avgPrice=totalVol>0?Math.round(totalSpend/totalVol):0;
+          const monthName=now.toLocaleDateString("en-NG",{month:"short"});
+          return [{l:"Orders MTD",v:`${mtd.length}`,sub:delivered?`${delivered} delivered`:"No deliveries yet"},{l:"Volume",v:totalVol>0?fmtVol:"—",sub:fmtSpend},{l:"Avg. Price",v:avgPrice>0?`₦${avgPrice.toLocaleString("en-NG")}/L`:"—",sub:monthName},{l:"Active Orders",v:`${activeOrders.length}`,sub:activeOrders.length>0?`${activeOrders.length} in progress`:"None"}];
+        })().map(k=>(
           <KpiCard key={k.l} label={k.l} value={k.v} sub={k.sub}/>
         ))}
       </div>
@@ -79,21 +91,21 @@ function BuyerDash({onOrder,isMobile}) {
               <div style={{fontSize:"13px",fontWeight:800,color:T.black}}>Price Trend — 7 Days</div>
               <div style={{fontSize:"10px",color:T.gray400,marginTop:"2px"}}>₦/Litre · PMS & AGO</div>
             </div>
-            <div style={{background:T.amberLight,color:"#8A5C00",fontSize:"10px",fontWeight:800,padding:"4px 8px"}}>📈 Rising next week</div>
+            <div style={{background:T.gray100,color:T.gray400,fontSize:"10px",fontWeight:800,padding:"4px 8px"}}>{priceHistory.length} data points</div>
           </div>
           <ResponsiveContainer width="100%" height={isMobile?150:180}>
             <LineChart data={priceHistory} margin={{top:4,right:0,bottom:0,left:-24}}>
               <CartesianGrid strokeDasharray="2 4" stroke={T.gray100}/>
               <XAxis dataKey="day" tick={{fill:T.gray400,fontSize:9,fontFamily:F,fontWeight:600}} axisLine={false} tickLine={false}/>
-              <YAxis tick={{fill:T.gray400,fontSize:9,fontFamily:F,fontWeight:600}} axisLine={false} tickLine={false} domain={[780,810]}/>
+              <YAxis tick={{fill:T.gray400,fontSize:9,fontFamily:F,fontWeight:600}} axisLine={false} tickLine={false}/>
               <Tooltip content={<ChartTip/>}/>
               <Line type="monotone" dataKey="pms" stroke={T.green} strokeWidth={2.5} name="PMS" dot={{fill:T.green,r:3,strokeWidth:0}}/>
               <Line type="monotone" dataKey="ago" stroke={T.blue} strokeWidth={2} name="AGO" dot={{fill:T.blue,r:3,strokeWidth:0}} strokeDasharray="5 3"/>
             </LineChart>
           </ResponsiveContainer>
           <div style={{display:"flex",gap:"12px",marginTop:"10px"}}>
-            <div style={{display:"flex",alignItems:"center",gap:"5px"}}><div style={{width:"10px",height:"2px",background:T.green}}/><span style={{fontSize:"10px",fontWeight:600,color:T.gray400}}>PMS ₦795</span></div>
-            <div style={{display:"flex",alignItems:"center",gap:"5px"}}><div style={{width:"10px",height:"2px",background:T.blue}}/><span style={{fontSize:"10px",fontWeight:600,color:T.gray400}}>AGO ₦1,185</span></div>
+            <div style={{display:"flex",alignItems:"center",gap:"5px"}}><div style={{width:"10px",height:"2px",background:T.green}}/><span style={{fontSize:"10px",fontWeight:600,color:T.gray400}}>PMS{priceHistory.length>0?` ₦${(priceHistory[priceHistory.length-1]?.pms||0).toLocaleString("en-NG")}`:""}</span></div>
+            <div style={{display:"flex",alignItems:"center",gap:"5px"}}><div style={{width:"10px",height:"2px",background:T.blue}}/><span style={{fontSize:"10px",fontWeight:600,color:T.gray400}}>AGO{priceHistory.length>0?` ₦${(priceHistory[priceHistory.length-1]?.ago||0).toLocaleString("en-NG")}`:""}</span></div>
           </div>
         </Card>
       </div>

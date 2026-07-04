@@ -15,9 +15,13 @@ import { openPaystackPopup, verifyAndCreditWallet, FUND_PRESETS } from "../lib/p
 import { useOrderRealtime, useDepotInboxRealtime, useProfileRealtime } from "../lib/realtime";
 import { useDepotContext } from "../context/DepotContext";
 
-function DepotDash({isMobile}) {
-  const [pms,setPms]=useState(795);
-  const [ago,setAgo]=useState(1185);
+function DepotDash({isMobile,depot}) {
+  const {depotOrders}=useVentrylStore();
+  const orders=depot?depotOrders[depot.id]||[]:[];
+  const pmsProduct=depot?.products?.find(p=>p.name==="PMS");
+  const agoProduct=depot?.products?.find(p=>p.name==="AGO");
+  const [pms,setPms]=useState(pmsProduct?.pricePerLitre||0);
+  const [ago,setAgo]=useState(agoProduct?.pricePerLitre||0);
   const [editing,setEditing]=useState(false);
   const col2=isMobile?"1fr":"1fr 1fr";
   return (
@@ -25,21 +29,18 @@ function DepotDash({isMobile}) {
       <div style={{background:T.black,padding:isMobile?"18px 16px":"24px 28px",marginBottom:"14px",display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"12px",flexWrap:isMobile?"wrap":"nowrap"}}>
         <div>
           <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:"4px"}}>Depot Dashboard</div>
-          <div style={{fontSize:isMobile?"20px":"24px",fontWeight:800,color:T.white}}>Nepal Energies</div>
-          <div style={{fontSize:"11px",color:T.gray400,marginTop:"3px"}}>Apapa, Lagos · NMDPRA: MDP/D/0042</div>
+          <div style={{fontSize:isMobile?"20px":"24px",fontWeight:800,color:T.white}}>{depot?.name||"Depot Dashboard"}</div>
+          <div style={{fontSize:"11px",color:T.gray400,marginTop:"3px"}}>{[depot?.location,depot?.license?`NMDPRA: ${depot.license}`:null].filter(Boolean).join(" · ")||"No depot selected"}</div>
         </div>
         <div style={{textAlign:isMobile?"left":"right"}}>
-          <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",marginBottom:"3px"}}>Revenue (Mar)</div>
-          <div style={{fontSize:isMobile?"22px":"28px",fontWeight:800,color:T.green}}>₦218M</div>
-          <div style={{fontSize:"10px",color:T.gray400,marginTop:"2px"}}>+10.1% vs Feb</div>
+          <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",marginBottom:"3px"}}>Revenue ({new Date().toLocaleDateString("en-NG",{month:"short"})})</div>
+          {(()=>{const now=new Date();const monthStart=new Date(now.getFullYear(),now.getMonth(),1);const mtdRev=orders.filter(o=>new Date(o._raw?.placed_at)>=monthStart&&(o.status==="delivered"||o.status==="collected")).reduce((s,o)=>s+o.value,0);return <div style={{fontSize:isMobile?"22px":"28px",fontWeight:800,color:T.green}}>{mtdRev>0?`₦${mtdRev>=1e6?(mtdRev/1e6).toFixed(1)+"M":mtdRev.toLocaleString("en-NG")}`:"—"}</div>;})()}
+          <div style={{fontSize:"10px",color:T.gray400,marginTop:"2px"}}>{orders.length} orders total</div>
         </div>
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"repeat(4,1fr)",gap:"1px",background:T.gray100,border:`1px solid ${T.gray100}`,marginBottom:"14px"}}>
-        <KpiCard label="Orders MTD" value="34" sub="28 fulfilled"/>
-        <KpiCard label="Volume" value="1.12M L" sub="34 trucks"/>
-        <KpiCard label="Pending" value="2" sub="SLA: 2h max" alert/>
-        <KpiCard label="Avg. Rating" value="4.8 ★" sub="34 reviews"/>
+        {(()=>{const now=new Date();const monthStart=new Date(now.getFullYear(),now.getMonth(),1);const mtd=orders.filter(o=>new Date(o._raw?.placed_at)>=monthStart);const fulfilled=mtd.filter(o=>o.status==="delivered"||o.status==="collected").length;const totalVol=orders.reduce((s,o)=>s+o.vol,0);const fmtVol=totalVol>=1e6?`${(totalVol/1e6).toFixed(2)}M L`:totalVol>=1000?`${(totalVol/1000).toFixed(0)}k L`:`${totalVol} L`;const pendingCount=orders.filter(o=>o.status==="pending").length;return(<><KpiCard label="Orders MTD" value={`${mtd.length}`} sub={fulfilled?`${fulfilled} fulfilled`:"None fulfilled"}/><KpiCard label="Volume" value={totalVol>0?fmtVol:"—"} sub={`${orders.reduce((s,o)=>s+o.trucks,0)} trucks`}/><KpiCard label="Pending" value={`${pendingCount}`} sub="SLA: 2h max" alert={pendingCount>0}/><KpiCard label="Rating" value={depot?.rating?`${depot.rating} ★`:"—"} sub={`${depot?.orders||0} reviews`}/></>);})()}
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:col2,gap:"14px",marginBottom:"14px"}}>
@@ -70,8 +71,8 @@ function DepotDash({isMobile}) {
 
         {/* Inventory */}
         <Card>
-          <SectionHead title="Inventory Status" sub="Current stock · Apapa"/>
-          {[{prod:"PMS",current:61200,cap:85000},{prod:"Total",current:61200,cap:85000}].map(s=>(
+          <SectionHead title="Inventory Status" sub={`Current stock · ${depot?.location||""}`}/>
+          {(depot?.products||[]).filter(p=>p.is_active&&p.stock>0).map(p=>({prod:p.name,current:p.stock,cap:depot?.capacity||100000})).concat([{prod:"Total",current:(depot?.products||[]).reduce((s,p)=>s+(p.stock||0),0),cap:depot?.capacity||100000}]).map(s=>(
             <div key={s.prod} style={{marginBottom:"16px"}}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:"5px"}}>
                 <span style={{fontSize:"12px",fontWeight:800,color:T.black}}>{s.prod}</span>
@@ -80,10 +81,7 @@ function DepotDash({isMobile}) {
               <div style={{height:"7px",background:T.gray100,borderRadius:"4px",overflow:"hidden"}}><div style={{height:"100%",width:`${Math.round(s.current/s.cap*100)}%`,background:T.green,borderRadius:"4px"}}/></div>
             </div>
           ))}
-          <div style={{background:T.amberLight,padding:"10px 14px",marginTop:"6px"}}>
-            <div style={{fontSize:"11px",fontWeight:700,color:"#8A5C00",marginBottom:"2px"}}>⚠ Restock in ~4 days</div>
-            <div style={{fontSize:"11px",color:"#8A5C00"}}>Contact NNPC for next PMS allocation.</div>
-          </div>
+          {(()=>{const totalStock=(depot?.products||[]).reduce((s,p)=>s+(p.stock||0),0);const cap=depot?.capacity||1;const pct=Math.round(totalStock/cap*100);return pct<30?(<div style={{background:T.amberLight,padding:"10px 14px",marginTop:"6px"}}><div style={{fontSize:"11px",fontWeight:700,color:"#8A5C00"}}>⚠ Stock below 30% — consider restocking</div></div>):null;})()}
         </Card>
       </div>
 

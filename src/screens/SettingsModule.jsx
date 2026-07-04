@@ -79,14 +79,12 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
   const [notif,setNotif]=useState({orderUpdates:true,priceAlerts:true,slaWarnings:true,deliveryConfirm:true,emailCh:true,smsCh:true,pushCh:false,weeklyReport:portalType==="depot"});
   const [twoFA,setTwoFA]=useState(true);
   const [showPwForm,setShowPwForm]=useState(false);
-  const [bays,setBays]=useState([
-    {id:"Bay 1",capacity:33000,products:["PMS"],hours:"07:00–19:00",active:true},
-    {id:"Bay 2",capacity:33000,products:["PMS","AGO"],hours:"07:00–19:00",active:true},
-  ]);
+  const [bays,setBays]=useState(depot?._raw?.bays||[]);
   const [removeTargetProduct,setRemoveTargetProduct]=useState(null);
 
 
   const {user:authUser,profile:authProfile,setProfile}=useAuthStore();
+  const {walletNGN}=useVentrylStore();
   const isBuyer=portalType==="buyer";
 
   // Profile form state — seeded from real DB profile
@@ -264,10 +262,10 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
           <>
             <SettingsBlock title="Depot Information">
               <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:"0 20px"}}>
-                <FieldRow label="Depot Name" value={depot?.name||"Nepal Energies"} verified editable={false}/>
-                <FieldRow label="NMDPRA License" value={depot?.license||"DL-2019-APR-0042"} verified editable={false}/>
-                <FieldRow label="Total Capacity (L)" value={depot?.capacity?(depot.capacity).toLocaleString():"85,000"} editable={false}/>
-                <FieldRow label="License Expiry" value="Apr 2027" editable={false}/>
+                <FieldRow label="Depot Name" value={depot?.name||""} verified editable={false}/>
+                <FieldRow label="NMDPRA License" value={depot?.license||""} verified editable={false}/>
+                <FieldRow label="Total Capacity (L)" value={depot?.capacity?(depot.capacity).toLocaleString():"—"} editable={false}/>
+                <FieldRow label="License Expiry" value={depot?._raw?.license_expiry||"—"} editable={false}/>
               </div>
               <div style={{fontSize:"10px",color:T.gray400,fontWeight:600,marginTop:"-8px",marginBottom:"4px"}}>Verified fields are locked. Contact your account manager to update.</div>
             </SettingsBlock>
@@ -333,11 +331,11 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
         <SettingsBlock title="Payout Wallet">
           <div style={{background:T.black,padding:"20px 22px",marginBottom:"14px"}}>
             <div style={{fontSize:"9px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"4px"}}>Available Balance</div>
-            <div style={{fontSize:"30px",fontWeight:800,color:T.green,letterSpacing:"-0.02em"}}>₦25,830,000</div>
+            <div style={{fontSize:"30px",fontWeight:800,color:T.green,letterSpacing:"-0.02em"}}>{walletNGN?`₦${walletNGN.balanceNGN.toLocaleString('en-NG')}`:"—"}</div>
             <div style={{fontSize:"11px",color:T.gray400,marginTop:"4px"}}>Settlement Account · Auto-managed</div>
           </div>
           <div style={{border:`1px solid ${T.gray100}`,marginBottom:"12px"}}>
-            {[["Account Name","Chukwuma Fuels Ltd"],["Account Number","0112 3456 78"],["Bank","Settlement Bank"],["Account Type","Settlement Account"]].map(([k,v])=>(
+            {[["Account Name",authProfile?.company_name||"—"],["Account Number",authProfile?.bank_account||"—"],["Bank",authProfile?.bank_name||"—"],["Account Type","Settlement Account"]].map(([k,v])=>(
               <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"10px 16px",borderBottom:`1px solid ${T.gray100}`,fontSize:"12px"}}>
                 <span style={{color:T.gray400,fontWeight:600}}>{k}</span>
                 <span style={{color:T.black,fontWeight:700}}>{v}</span>
@@ -348,10 +346,10 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
         </SettingsBlock>
         <SettingsBlock title="Withdrawal Account">
           <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:"0 20px"}}>
-            <FieldRow label="Bank Name" value="GTBank"/>
-            <FieldRow label="Account Number" value="0123456789"/>
+            <FieldRow label="Bank Name" value={authProfile?.bank_name||""}/>
+            <FieldRow label="Account Number" value={authProfile?.bank_account||""}/>
           </div>
-          <FieldRow label="Account Name" value="Chukwuma Fuels Ltd" editable={false}/>
+          <FieldRow label="Account Name" value={authProfile?.company_name||""} editable={false}/>
           <div style={{background:T.amberLight,padding:"10px 14px",marginBottom:"6px",fontSize:"11px",color:"#8A5C00",fontWeight:600}}>
             Changes to your bank account require 48h verification.
           </div>
