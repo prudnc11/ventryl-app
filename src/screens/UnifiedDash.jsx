@@ -17,6 +17,7 @@ import { useDepotContext } from "../context/DepotContext";
 import { MarketPulseWidget, OrderInboxPanel } from "../components/shared/OrderWidgets";
 
 function UnifiedDash({onOrder,onDepotClick,onNewDepot,onViewOrder,isMobile}) {
+  const navigate = useNavigate();
   const { depots } = useDepotContext();
   const {profile:userProfile}=useAuthStore();
   const {buyerOrders,walletNGN,priceHistory,depotOrders}=useVentrylStore();
@@ -72,7 +73,12 @@ function UnifiedDash({onOrder,onDepotClick,onNewDepot,onViewOrder,isMobile}) {
       <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1.4fr 1fr",gap:"14px",alignItems:"start"}}>
         <div style={{display:"flex",flexDirection:"column",gap:"14px"}}>
           {hasDepots&&(
-            <OrderInboxPanel incoming={allDepotIncoming} isMobile={isMobile} depot={null} onViewOrder={onViewOrder}/>
+            <OrderInboxPanel incoming={allDepotIncoming} isMobile={isMobile} depot={null} onViewOrder={(orderId)=>{
+              const o=allDepotIncoming.find(x=>x.id===orderId);
+              const depotId=o?._raw?.depot_id;
+              if(depotId) navigate(`/depot/${depotId}/order/${orderId}`);
+              else if(onViewOrder) onViewOrder(orderId);
+            }}/>
           )}
           <Card>
             <SectionHead title="Recent Orders" sub={`${allOrders.length} orders`} right={<button onClick={()=>onViewOrder&&onViewOrder(allOrders[0]?.id)} style={{background:"none",border:"none",fontSize:"11px",fontWeight:700,color:T.gray400,cursor:"pointer",fontFamily:F,padding:0}}>View all →</button>}/>
