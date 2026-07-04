@@ -20,12 +20,12 @@ function assertOk(error, context) {
 
 export const auth = {
   /** Sign up a new user and create their profile */
-  async signUp({ email, password, fullName, companyName, phone }) {
+  async signUp({ email, password, fullName, companyName, phone, state, lga }) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { full_name: fullName, company_name: companyName, phone },
+        data: { full_name: fullName, company_name: companyName, phone, state, lga },
       },
     });
     assertOk(error, 'auth.signUp');

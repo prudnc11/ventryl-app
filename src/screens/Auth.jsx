@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { auth } from '../lib/api';
 import { isConfigured } from '../lib/supabase';
+import { NG_STATES } from '../lib/ngStates';
 
 /* ── Design tokens (mirrors App.jsx) ─────────────────────────────── */
 const T = {
@@ -232,7 +233,7 @@ function LoginScreen({ onSwitch }) {
 /* ── Signup Screen ────────────────────────────────────────────────── */
 function SignupScreen({ onSwitch }) {
   const [form, setForm] = useState({
-    fullName: '', companyName: '', email: '', phone: '', password: '', confirmPassword: '',
+    fullName: '', companyName: '', email: '', phone: '', state: '', lga: '', password: '', confirmPassword: '',
   });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -254,6 +255,8 @@ function SignupScreen({ onSwitch }) {
         fullName: form.fullName,
         companyName: form.companyName,
         phone: form.phone,
+        state: form.state,
+        lga: form.lga,
       });
       setSuccess(true);
     } catch (e) {
@@ -337,6 +340,22 @@ function SignupScreen({ onSwitch }) {
           <div style={{ gridColumn: '1/-1' }}>
             <Field label="Phone Number" type="tel" value={form.phone} onChange={set('phone')} placeholder="+234 801 234 5678" hint="Used for order notifications" />
           </div>
+          <div>
+            <div style={{ fontSize: '10px', fontWeight: 700, color: T.gray400, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>State <span style={{ color: T.red }}>*</span></div>
+            <select value={form.state} onChange={e => { setForm(f => ({ ...f, state: e.target.value, lga: '' })); }}
+              style={{ width: '100%', border: `1px solid ${T.gray200}`, padding: '11px 12px', fontFamily: F, fontSize: '13px', fontWeight: 600, color: form.state ? T.black : T.gray400, outline: 'none', background: T.white, marginBottom: '16px', appearance: 'auto' }}>
+              <option value="">Select state</option>
+              {Object.keys(NG_STATES).map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{ fontSize: '10px', fontWeight: 700, color: T.gray400, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>LGA <span style={{ color: T.red }}>*</span></div>
+            <select value={form.lga} onChange={e => setForm(f => ({ ...f, lga: e.target.value }))} disabled={!form.state}
+              style={{ width: '100%', border: `1px solid ${T.gray200}`, padding: '11px 12px', fontFamily: F, fontSize: '13px', fontWeight: 600, color: form.lga ? T.black : T.gray400, outline: 'none', background: form.state ? T.white : T.gray50, marginBottom: '16px', appearance: 'auto' }}>
+              <option value="">Select LGA</option>
+              {(NG_STATES[form.state] || []).map(l => <option key={l} value={l}>{l}</option>)}
+            </select>
+          </div>
           <Field label="Password" type="password" value={form.password} onChange={set('password')} placeholder="••••••••" required hint="Minimum 8 characters" />
           <Field label="Confirm Password" type="password" value={form.confirmPassword} onChange={set('confirmPassword')} placeholder="••••••••" required />
         </div>
@@ -346,7 +365,7 @@ function SignupScreen({ onSwitch }) {
           <span style={{ color: T.black, fontWeight: 800 }}>Privacy Policy</span>.
         </div>
         <Btn type="submit" loading={loading}
-          disabled={!form.fullName || !form.companyName || !form.email || !form.password || !form.confirmPassword}>
+          disabled={!form.fullName || !form.companyName || !form.email || !form.state || !form.lga || !form.password || !form.confirmPassword}>
           Create Account →
         </Btn>
       </form>

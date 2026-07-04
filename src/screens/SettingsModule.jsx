@@ -28,6 +28,7 @@ function FieldRow({label,value,onChange,editable=true,verified=false,type="text"
   // Controlled if onChange provided, otherwise uncontrolled with internal state
   const [localVal,setLocalVal]=useState(value||"");
   const isControlled=typeof onChange==="function";
+  useEffect(()=>{if(!isControlled) setLocalVal(value||"");},[value,isControlled]);
   const displayVal=isControlled?value:localVal;
   const handleChange=e=>{
     if(isControlled) onChange(e);
@@ -315,7 +316,7 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
           )}
         </SettingsBlock>
         <SettingsBlock title="Channels">
-          <NotifRow label="Email" sub={isBuyer?"emeka@chukwumafuels.com":"ops@nepal-energies.com"} on={notif.emailCh} onChange={v=>setNotif(n=>({...n,emailCh:v}))}/>
+          <NotifRow label="Email" sub={authUser?.email||"—"} on={notif.emailCh} onChange={v=>setNotif(n=>({...n,emailCh:v}))}/>
           <NotifRow label="SMS" sub={authProfile?.phone||isBuyer?"+234 803 456 7890":"+234 802 345 6789"} on={notif.smsCh} onChange={v=>setNotif(n=>({...n,smsCh:v}))}/>
           <NotifRow label="Push notifications" sub="Browser and mobile push" on={notif.pushCh} onChange={v=>setNotif(n=>({...n,pushCh:v}))}/>
         </SettingsBlock>
