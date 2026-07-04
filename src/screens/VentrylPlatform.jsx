@@ -77,6 +77,14 @@ export function VentrylPlatform({ bp, user, onSignOut }) {
   } = useVentrylStore();
 
   const [showKycGate, setShowKycGate] = useState(false);
+  const [kycGateAction, setKycGateAction] = useState(""); // "order" | "depot"
+
+  const kycApproved = authProfile?.kyc_status === "submitted" || authProfile?.kyc_status === "verified" || authProfile?.kyc_status === "approved";
+
+  const requireKyc = (action, cb) => {
+    if (!kycApproved) { setKycGateAction(action); setShowKycGate(true); return; }
+    cb();
+  };
 
   useEffect(() => {
     if (!authUser?.id) return;
@@ -93,10 +101,8 @@ export function VentrylPlatform({ bp, user, onSignOut }) {
     ...localDepots.filter(ld => !ownerDepots.find(d => d.id === ld.id)),
   ];
 
-  const handleNewDepot = () => {
-    if (authProfile?.kyc_status !== "verified") { setShowKycGate(true); return; }
-    navigate("/depot/new");
-  };
+  const handleNewDepot = () => requireKyc("depot", () => navigate("/depot/new"));
+  const handlePlaceOrder = () => requireKyc("order", () => navigate("/place-order"));
 
   const handleCreateDepot = async (form) => {
     const created = await depotsApi.create({
@@ -166,7 +172,8 @@ export function VentrylPlatform({ bp, user, onSignOut }) {
   const isAdmin = !!user?.isAdmin;
   const pendingKyb = depots.filter(d => d.kyb !== "verified").length;
   const pills = [
-    authProfile?.kyc_status === "approved" ? { bg: T.greenLight, color: T.greenDark, label: "KYC ✓" } : null,
+    authProfile?.kyc_status === "verified" || authProfile?.kyc_status === "approved" ? { bg: T.greenLight, color: T.greenDark, label: "KYC ✓" }
+      : authProfile?.kyc_status === "submitted" ? { bg: T.amberLight, color: "#8A5C00", label: "KYC Pending" } : null,
     walletNGN ? { bg: T.gray50, color: T.black, label: `₦${(walletNGN.balanceNGN / 1e6).toFixed(1)}M` } : null,
     pendingKyb
       ? { bg: T.amberLight, color: "#8A5C00", label: `${pendingKyb} KYB pending` }
@@ -186,8 +193,8 @@ export function VentrylPlatform({ bp, user, onSignOut }) {
         <div style={{ width: "44px", height: "44px", background: T.amberLight, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "16px", fontSize: "20px" }}>🔒</div>
         <div style={{ fontSize: "16px", fontWeight: 800, color: T.black, marginBottom: "8px" }}>KYC Verification Required</div>
         <div style={{ fontSize: "13px", color: "#555", lineHeight: 1.6, marginBottom: "20px" }}>
-          You need to complete identity verification (KYC) before creating a depot.<br /><br />
-          Go to <strong>Settings → Verification</strong> to upload your documents and submit for review.
+          You need to complete identity verification (KYC) before {kycGateAction === "order" ? "placing an order" : kycGateAction === "depot" ? "creating a depot" : "performing this action"}.<br /><br />
+          Go to <strong>Settings → Verification</strong> to upload your required documents (NIN, CAC Certificate, Proof of Address) and submit for review.
         </div>
         <div style={{ display: "flex", gap: "10px" }}>
           <button onClick={() => { setShowKycGate(false); navigate("/settings"); }}
@@ -212,7 +219,7 @@ export function VentrylPlatform({ bp, user, onSignOut }) {
         {KYC_GATE}
         {!isMobile && (
           <PlatformSidebar
-            depots={depots} onNewDepot={handleNewDepot}
+            depots={depots} onNewDepot={handleNewDepot} onPlaceOrder={handlePlaceOrder}
             identity={IDENTITY} onSignOut={onSignOut} isAdmin={isAdmin}
           />
         )}
@@ -222,8 +229,8 @@ export function VentrylPlatform({ bp, user, onSignOut }) {
             <ErrorBoundary>
               <Suspense fallback={<PageLoader />}>
                 <Routes>
-                  <Route index element={<UnifiedDash onOrder={() => navigate("/place-order")} onDepotClick={id => navigate(`/depot/${id}`)} onNewDepot={handleNewDepot} onViewOrder={id => navigate(`/orders/${id}`)} isMobile={isMobile} />} />
-                  <Route path="market" element={<BuyerMarketplace onOrder={() => navigate("/place-order")} isMobile={isMobile} />} />
+                  <Route index element={<UnifiedDash onOrder={handlePlaceOrder} onDepotClick={id => navigate(`/depot/${id}`)} onNewDepot={handleNewDepot} onViewOrder={id => navigate(`/orders/${id}`)} isMobile={isMobile} />} />
+                  <Route path="market" element={<BuyerMarketplace onOrder={handlePlaceOrder} isMobile={isMobile} />} />
                   <Route path="orders" element={<OrdersListView isMobile={isMobile} />} />
                   <Route path="orders/:id" element={<BuyerOrderDetail isMobile={isMobile} />} />
                   <Route path="wallet" element={<BuyerWallet isMobile={isMobile} />} />
@@ -240,7 +247,7 @@ export function VentrylPlatform({ bp, user, onSignOut }) {
         </div>
         {isMobile && (
           <PlatformSidebar
-            depots={depots} onNewDepot={handleNewDepot}
+            depots={depots} onNewDepot={handleNewDepot} onPlaceOrder={handlePlaceOrder}
             identity={IDENTITY} onSignOut={onSignOut} isAdmin={isAdmin} isMobile={true}
           />
         )}

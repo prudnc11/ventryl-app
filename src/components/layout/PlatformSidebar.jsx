@@ -2,7 +2,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { T, F } from "../../lib/tokens";
 import { Icon } from "../../components/shared";
 
-export function PlatformSidebar({ depots, onNewDepot, identity, isMobile, onSignOut, isAdmin }) {
+export function PlatformSidebar({ depots, onNewDepot, onPlaceOrder, identity, isMobile, onSignOut, isAdmin }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
@@ -36,7 +36,10 @@ export function PlatformSidebar({ depots, onNewDepot, identity, isMobile, onSign
           const active = n.path === "__depots__" ? pathname.startsWith("/depot") : isActive(n.path);
           return (
             <button key={n.path}
-              onClick={() => navigate(n.path === "__depots__" ? (depots[0] ? `/depot/${depots[0].id}` : "/") : n.path)}
+              onClick={() => {
+                if (n.path === "/place-order" && onPlaceOrder) { onPlaceOrder(); return; }
+                navigate(n.path === "__depots__" ? (depots[0] ? `/depot/${depots[0].id}` : "/") : n.path);
+              }}
               style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "10px 4px", background: "none", border: "none", cursor: "pointer", fontFamily: F, color: active ? T.green : "#555", position: "relative", minHeight: "56px" }}>
               {n.badge && <span style={{ position: "absolute", top: "6px", right: "calc(50% - 14px)", background: T.amber, color: T.black, fontSize: "9px", fontWeight: 800, padding: "1px 4px", borderRadius: "8px", minWidth: "16px", textAlign: "center" }}>{n.badge}</span>}
               <Icon d={n.icon} size={20} />
@@ -65,7 +68,10 @@ export function PlatformSidebar({ depots, onNewDepot, identity, isMobile, onSign
         {ITEMS.map(n => {
           const active = isActive(n.path);
           return (
-            <button key={n.path} onClick={() => navigate(n.path)}
+            <button key={n.path} onClick={() => {
+                if (n.path === "/place-order" && onPlaceOrder) { onPlaceOrder(); return; }
+                navigate(n.path);
+              }}
               style={{ width: "100%", display: "flex", alignItems: "center", gap: "9px", padding: "9px 12px", borderRadius: "5px", background: active ? T.white : "transparent", color: active ? T.black : "#888", border: "none", cursor: "pointer", marginBottom: "2px", fontFamily: F, fontSize: "12px", fontWeight: active ? 800 : 600, textAlign: "left", transition: "all 0.1s" }}>
               <Icon d={n.icon} size={15} />
               <span style={{ flex: 1 }}>{n.label}</span>
