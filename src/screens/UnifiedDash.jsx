@@ -21,7 +21,8 @@ function UnifiedDash({onOrder,onDepotClick,onNewDepot,onViewOrder,isMobile}) {
   const { depots } = useDepotContext();
   const {profile:userProfile}=useAuthStore();
   const {buyerOrders,walletNGN,priceHistory,depotOrders,loadDepotOrders}=useVentrylStore();
-  useEffect(()=>{depots.forEach(d=>loadDepotOrders(d.id));},[depots]);
+  const depotIds=depots.map(d=>d.id).join(",");
+  useEffect(()=>{if(depotIds) depotIds.split(",").forEach(id=>loadDepotOrders(id));},[depotIds]);
   const allOrders=buyerOrders;
   const verified=depots.filter(d=>d.kyb==="verified");
   const pending=depots.filter(d=>d.kyb!=="verified");
