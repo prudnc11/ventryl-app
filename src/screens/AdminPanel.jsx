@@ -94,8 +94,11 @@ function DocViewer({ bucket, docs, onClose }) {
     (async () => {
       const signed = {};
       await Promise.all(docs.map(async (doc) => {
-        const { data } = await sb.storage.from(bucket).createSignedUrl(doc.file_path, 3600);
-        if (data?.signedUrl) signed[doc.id] = data.signedUrl;
+        try {
+          const { data, error } = await sb.storage.from(bucket).createSignedUrl(doc.file_path, 3600);
+          if (error) { console.warn(`[DocViewer] signed URL failed for ${doc.file_path}:`, error.message); return; }
+          if (data?.signedUrl) signed[doc.id] = data.signedUrl;
+        } catch (e) { console.warn(`[DocViewer] signed URL error:`, e.message); }
       }));
       setUrls(signed);
       setLoadingUrls(false);
@@ -139,7 +142,7 @@ function DocViewer({ bucket, docs, onClose }) {
                 View
               </a>
             ) : (
-              <span style={{ fontSize: '10px', color: T.gray400 }}>No link</span>
+              <span style={{ fontSize: '10px', color: T.amber, fontWeight: 700 }}>Access denied</span>
             )}
           </div>
         </div>
