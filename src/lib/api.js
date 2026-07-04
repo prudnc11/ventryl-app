@@ -482,7 +482,7 @@ export const wallet = {
       .from('wallets')
       .select('*')
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
     assertOk(error, 'wallet.get');
     return data;
   },
@@ -493,7 +493,7 @@ export const wallet = {
       .from('wallets')
       .select('id')
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
     if (!w) return [];
 
     const { data, error } = await supabase
