@@ -82,7 +82,9 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
   const [showPwForm,setShowPwForm]=useState(false);
   const [bays,setBays]=useState(depot?._raw?.bays||[]);
   const [removeTargetProduct,setRemoveTargetProduct]=useState(null);
-
+  const [vatInput,setVatInput]=useState(depot?._raw?.vat_percent??7.5);
+  const [showVatConfirm,setShowVatConfirm]=useState(false);
+  const [vatSaving,setVatSaving]=useState(false);
 
   const {user:authUser,profile:authProfile,setProfile}=useAuthStore();
   const {walletNGN}=useVentrylStore();
@@ -291,6 +293,45 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
               </div>
               <button onClick={()=>setTab("products")} style={{background:"none",border:`1px solid ${T.gray200}`,padding:"7px 14px",fontSize:"11px",fontWeight:700,color:T.gray600,cursor:"pointer",fontFamily:F,minHeight:"34px"}}>Manage Products →</button>
             </SettingsBlock>
+            <SettingsBlock title="VAT Configuration">
+              <div style={{display:"flex",alignItems:"flex-end",gap:"12px",flexWrap:"wrap"}}>
+                <div style={{flex:"0 0 180px"}}>
+                  <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"6px"}}>VAT Rate (%)</div>
+                  <input type="number" step="0.1" min="0" max="100" value={vatInput} onChange={e=>setVatInput(e.target.value)}
+                    style={{width:"100%",border:`1px solid ${T.gray200}`,padding:"10px 14px",fontFamily:F,fontSize:"13px",fontWeight:600,color:T.black,background:T.white,outline:"none"}}/>
+                </div>
+                <button disabled={parseFloat(vatInput)===(depot?._raw?.vat_percent??7.5)} onClick={()=>setShowVatConfirm(true)}
+                  style={{background:parseFloat(vatInput)===(depot?._raw?.vat_percent??7.5)?T.gray200:T.black,color:parseFloat(vatInput)===(depot?._raw?.vat_percent??7.5)?T.gray400:T.white,border:"none",padding:"10px 18px",fontSize:"12px",fontWeight:800,cursor:parseFloat(vatInput)===(depot?._raw?.vat_percent??7.5)?"not-allowed":"pointer",fontFamily:F,minHeight:"40px"}}>
+                  Update VAT
+                </button>
+              </div>
+              <div style={{fontSize:"10px",color:T.gray400,fontWeight:600,marginTop:"8px"}}>This rate is applied to all new orders placed at this depot.</div>
+            </SettingsBlock>
+            {showVatConfirm&&(
+              <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px"}}>
+                <div style={{background:T.white,maxWidth:"400px",width:"100%",padding:"24px"}}>
+                  <div style={{fontSize:"16px",fontWeight:800,color:T.black,marginBottom:"8px"}}>Confirm VAT Change</div>
+                  <div style={{fontSize:"13px",color:T.gray600,marginBottom:"6px"}}>
+                    Are you sure you want to change the VAT rate from <strong>{depot?._raw?.vat_percent??7.5}%</strong> to <strong>{vatInput}%</strong>?
+                  </div>
+                  <div style={{fontSize:"11px",color:T.gray400,marginBottom:"20px"}}>This will apply to all future orders at this depot.</div>
+                  <div style={{display:"flex",gap:"10px"}}>
+                    <button onClick={()=>setShowVatConfirm(false)} style={{flex:1,background:T.white,color:T.black,border:`1px solid ${T.gray200}`,padding:"10px",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:F,minHeight:"40px"}}>Cancel</button>
+                    <button disabled={vatSaving} onClick={async()=>{
+                      setVatSaving(true);
+                      try{
+                        await depotsApi.update(depot.id,{vat_percent:parseFloat(vatInput)||7.5});
+                        if(onUpdateDepot) onUpdateDepot(depot.id);
+                        setSaved(true);setTimeout(()=>setSaved(false),2200);
+                      }catch(e){console.error("VAT update failed",e);}
+                      finally{setVatSaving(false);setShowVatConfirm(false);}
+                    }} style={{flex:1,background:T.black,color:T.white,border:"none",padding:"10px",fontSize:"12px",fontWeight:800,cursor:vatSaving?"not-allowed":"pointer",fontFamily:F,minHeight:"40px"}}>
+                      {vatSaving?"Saving…":"Confirm Change"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
         {isBuyer?(

@@ -104,6 +104,7 @@ export function VentrylPlatform({ bp, user, onSignOut }) {
       state: form.state, lga: form.lga || form.location, address: form.address,
       licenseNumber: form.license, licenseExpiry: form.expiry,
       capacity: Number(form.capacity) || 0, products: form.products,
+      vatPercent: parseFloat(form.vatPercent) || 7.5,
       contactName: form.contactName, contactPhone: form.contactPhone,
       contactEmail: form.contactEmail, contactRole: form.contactRole,
     });

@@ -896,8 +896,8 @@ function DepotOrderDetail({isMobile}) {
               {[
                 ["Order Value",fmtMoney(finials.productValue),null],
                 ...(liveQuoteStatus==="agreed"?[["Delivery Revenue",`+${fmtMoney(liveQuoteRounds[liveQuoteRounds.length-1]?.amount||0)}`,null]]:isDelivery?[["Delivery Cost","Pending","pending"]]:[] ),
-                ["Platform Fee (1%)",`-${fmtMoney(finials.platformFee)}`,"sub"],
-                ["VAT",`-${fmtMoney(finials.vat)}`,"sub"],
+                ["Platform Fee (1%)",`+${fmtMoney(finials.platformFee)}`,"sub"],
+                ["VAT",`+${fmtMoney(finials.vat)}`,"sub"],
               ].map(([l,v,type])=>(
                 <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${T.gray100}`,alignItems:"center"}}>
                   <span style={{fontSize:type==="sub"?"11px":"12px",color:type==="sub"?T.gray400:type==="pending"?T.gray400:T.gray600,fontWeight:type==="sub"?600:700}}>{l}</span>
@@ -967,8 +967,8 @@ function DepotOrderDetail({isMobile}) {
             {[
               ["Gross Order Value",fmtMoney(finials.productValue),null],
               ...(liveQuoteStatus==="agreed"?[["Delivery Revenue",`+${fmtMoney(liveQuoteRounds[liveQuoteRounds.length-1]?.amount||0)}`,null]]:isDelivery?[["Delivery Cost","Pending negotiation","pending"]]:[] ),
-              ["Platform Fee (1%)",`-${fmtMoney(finials.platformFee)}`,"sub"],
-              ["VAT (7.5%)",`-${fmtMoney(finials.vat)}`,"sub"],
+              ["Platform Fee (1%)",`+${fmtMoney(finials.platformFee)}`,"sub"],
+              [`VAT (${finials.productValue>0?((finials.vat/finials.productValue)*100).toFixed(1):7.5}%)`,`+${fmtMoney(finials.vat)}`,"sub"],
             ].map(([l,v,type])=>(
               <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"9px 0",borderBottom:`1px solid ${T.gray100}`}}>
                 <span style={{fontSize:"12px",color:type==="sub"?T.gray400:type==="pending"?T.gray400:T.gray600,fontWeight:type?600:700}}>{l}</span>

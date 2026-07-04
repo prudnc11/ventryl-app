@@ -38,7 +38,7 @@ const KYB_DOCS=[
 function CreateDepotFlow({onCreateDepot,onDone,onCancel,isMobile}) {
   const {user}=useAuthStore();
   const [step,setStep]=useState(1);
-  const [form,setForm]=useState({name:"",location:"",state:"",lga:"",address:"",license:"",expiry:"",products:[],capacity:"",contactName:"",contactPhone:"",contactEmail:"",contactRole:""});
+  const [form,setForm]=useState({name:"",location:"",state:"",lga:"",address:"",license:"",expiry:"",products:[],capacity:"",vatPercent:"7.5",contactName:"",contactPhone:"",contactEmail:"",contactRole:""});
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const toggleProduct=p=>set("products",form.products.includes(p)?form.products.filter(x=>x!==p):[...form.products,p]);
 
@@ -156,6 +156,7 @@ function CreateDepotFlow({onCreateDepot,onDone,onCancel,isMobile}) {
           <DepotFormInput label="NMDPRA License No." value={form.license} onChange={e=>set("license",e.target.value)} placeholder="e.g. DL-2024-APR-0099" hint="Department of Petroleum Resources license number"/>
           <DepotFormInput label="License Expiry Date" value={form.expiry} onChange={e=>set("expiry",e.target.value)} type="date"/>
           <DepotFormInput label="Tank Capacity (Litres)" value={form.capacity} onChange={e=>set("capacity",e.target.value)} type="number" placeholder="e.g. 85000"/>
+          <DepotFormInput label="VAT Rate (%)" value={form.vatPercent} onChange={e=>set("vatPercent",e.target.value)} type="number" placeholder="7.5" hint="Value Added Tax percentage applied to orders. Default is 7.5%"/>
           <div style={{marginBottom:"16px"}}>
             <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"8px"}}>Products Handled</div>
             <div style={{display:"flex",gap:"8px",flexWrap:"wrap"}}>
@@ -234,7 +235,7 @@ function CreateDepotFlow({onCreateDepot,onDone,onCancel,isMobile}) {
               <div style={{fontSize:"14px",fontWeight:800,color:T.black,marginBottom:"16px"}}>Review & Submit</div>
               <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"8px"}}>Depot Info</div>
               <div style={{border:`1px solid ${T.gray100}`,marginBottom:"14px"}}>
-                {[["Depot Name",form.name],["Location",form.location],["Address",form.address||"—"],["NMDPRA License",form.license],["License Expiry",form.expiry||"—"],["Capacity",form.capacity?`${Number(form.capacity).toLocaleString()} L`:"—"],["Products",form.products.join(", ")||"—"]].map(([k,v])=>(
+                {[["Depot Name",form.name],["Location",form.location],["Address",form.address||"—"],["NMDPRA License",form.license],["License Expiry",form.expiry||"—"],["Capacity",form.capacity?`${Number(form.capacity).toLocaleString()} L`:"—"],["VAT Rate",`${form.vatPercent||7.5}%`],["Products",form.products.join(", ")||"—"]].map(([k,v])=>(
                   <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"10px 16px",borderBottom:`1px solid ${T.gray100}`,fontSize:"12px"}}>
                     <span style={{color:T.gray400,fontWeight:600}}>{k}</span><span style={{color:T.black,fontWeight:700}}>{v}</span>
                   </div>

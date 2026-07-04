@@ -148,7 +148,7 @@ export const depots = {
    * Create a new depot. Caller must have kyc_status = 'verified' on their
    * profile before invoking — the depot itself starts with kyb_status = 'pending'.
    */
-  async create({ ownerId, name, location, state, lga, address, licenseNumber, licenseExpiry, capacity, products, contactName, contactPhone, contactEmail, contactRole }) {
+  async create({ ownerId, name, location, state, lga, address, licenseNumber, licenseExpiry, capacity, products, vatPercent, contactName, contactPhone, contactEmail, contactRole }) {
     const { data: depot, error: depotErr } = await supabase
       .from('depots')
       .insert({
@@ -161,6 +161,7 @@ export const depots = {
         license_number: licenseNumber,
         license_expiry: licenseExpiry || null,
         capacity: capacity ? Number(capacity) : 0,
+        vat_percent: vatPercent ?? 7.5,
         kyb_status: 'pending',
       })
       .select()
@@ -228,11 +229,12 @@ export const orders = {
    * Place a new order. Generates a VTL-XXXXX id via DB function.
    * items: [{ product, volume, pricePerLitre }]
    */
-  async create({ buyerId, depotId, deliveryMode, deliveryState, deliveryLga, deliveryAddress, pickupNote, items }) {
+  async create({ buyerId, depotId, deliveryMode, deliveryState, deliveryLga, deliveryAddress, pickupNote, items, vatPercent }) {
     const totalVolume = items.reduce((s, i) => s + i.volume, 0);
     const totalValue = items.reduce((s, i) => s + i.pricePerLitre * i.volume, 0);
     const platformFee = Math.round(totalValue * 0.01);
-    const vat = Math.round(platformFee * 0.075);
+    const vatRate = (vatPercent ?? 7.5) / 100;
+    const vat = Math.round(totalValue * vatRate);
     const netToDepot = totalValue - platformFee;
     const trucksCount = Math.ceil(totalVolume / 33000);
 
