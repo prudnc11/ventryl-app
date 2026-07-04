@@ -235,7 +235,7 @@ export const orders = {
     const platformFee = Math.round(totalValue * 0.01);
     const vatRate = (vatPercent ?? 7.5) / 100;
     const vat = Math.round(totalValue * vatRate);
-    const netToDepot = totalValue - platformFee;
+    const netToDepot = totalValue + vat;
     const trucksCount = Math.ceil(totalVolume / 33000);
 
     // Generate order ID from DB sequence; fall back to timestamp-based ID if not available
