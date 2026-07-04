@@ -643,46 +643,105 @@ function PricingEngine({ isMobile }) {
 // ── Users Tab ──────────────────────────────────────────────────────────────────
 function UsersTable({ isMobile }) {
   const [users, setUsers] = useState([]);
+  const [depotCounts, setDepotCounts] = useState({});
+  const [orderCounts, setOrderCounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [expanded, setExpanded] = useState({});
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 50;
 
-  useEffect(() => {
-    (async () => {
+  const loadUsers = useCallback(async () => {
+    setLoading(true);
+    setErr('');
+    try {
+      // Fetch all profiles (no limit) so admin sees every user
       const { data, error } = await sb
         .from('profiles')
-        .select('id, full_name, email, company_name, kyc_status, vcs_score, is_admin, created_at')
-        .order('created_at', { ascending: false })
-        .limit(200);
+        .select('id, full_name, email, phone, company_name, state, lga, kyc_status, vcs_score, is_admin, created_at')
+        .order('created_at', { ascending: false });
       if (error) { setErr(error.message); setLoading(false); return; }
-      setUsers(data || []);
-      setLoading(false);
-    })();
+      const allUsers = data || [];
+      setUsers(allUsers);
+
+      // Fetch depot counts per owner
+      const { data: depots } = await sb.from('depots').select('owner_id');
+      if (depots) {
+        const dc = {};
+        depots.forEach(d => { dc[d.owner_id] = (dc[d.owner_id] || 0) + 1; });
+        setDepotCounts(dc);
+      }
+
+      // Fetch order counts per buyer
+      const { data: orders } = await sb.from('orders').select('buyer_id');
+      if (orders) {
+        const oc = {};
+        orders.forEach(o => { oc[o.buyer_id] = (oc[o.buyer_id] || 0) + 1; });
+        setOrderCounts(oc);
+      }
+    } catch (e) { setErr(e.message); }
+    setLoading(false);
   }, []);
 
-  const filtered = search
-    ? users.filter(u => ((u.full_name || '') + (u.email || '') + (u.company_name || '')).toLowerCase().includes(search.toLowerCase()))
-    : users;
+  useEffect(() => { loadUsers(); }, [loadUsers]);
+
+  const USER_FILTERS = [
+    { value: 'all', label: 'All' },
+    { value: 'verified', label: 'KYC Verified' },
+    { value: 'pending', label: 'Pending KYC' },
+    { value: 'admin', label: 'Admins' },
+    { value: 'depot_owners', label: 'Depot Owners' },
+  ];
+
+  const counts = {
+    all: users.length,
+    verified: users.filter(u => u.kyc_status === 'verified' || u.kyc_status === 'approved').length,
+    pending: users.filter(u => !u.kyc_status || u.kyc_status === 'pending' || u.kyc_status === 'submitted').length,
+    admin: users.filter(u => u.is_admin).length,
+    depot_owners: users.filter(u => depotCounts[u.id] > 0).length,
+  };
+
+  let visible = users;
+  if (filter === 'verified') visible = users.filter(u => u.kyc_status === 'verified' || u.kyc_status === 'approved');
+  else if (filter === 'pending') visible = users.filter(u => !u.kyc_status || u.kyc_status === 'pending' || u.kyc_status === 'submitted');
+  else if (filter === 'admin') visible = users.filter(u => u.is_admin);
+  else if (filter === 'depot_owners') visible = users.filter(u => depotCounts[u.id] > 0);
+
+  if (search) {
+    const q = search.toLowerCase();
+    visible = visible.filter(u => ((u.full_name || '') + (u.email || '') + (u.company_name || '') + (u.state || '') + (u.phone || '')).toLowerCase().includes(q));
+  }
+
+  const totalPages = Math.ceil(visible.length / PAGE_SIZE);
+  const paged = visible.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   if (loading) return <Spinner />;
 
   return (
     <div>
       <ErrBanner msg={err} />
-      <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, email, company…"
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+        <div style={{ fontSize: '12px', color: T.gray600, fontWeight: 600 }}>{users.length} total users · Showing {visible.length}{search ? ' matching' : ''}</div>
+        <button onClick={loadUsers} style={{ background: T.black, color: T.white, border: 'none', padding: '6px 12px', fontSize: '10px', fontWeight: 800, cursor: 'pointer', fontFamily: F }}>Refresh</button>
+      </div>
+      <FilterBar filters={USER_FILTERS} active={filter} counts={counts} onChange={v => { setFilter(v); setPage(0); }} />
+      <input value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} placeholder="Search by name, email, company, state, phone…"
         style={{ width: '100%', border: `1px solid ${T.gray200}`, padding: '10px 14px', fontFamily: F, fontSize: '13px', color: T.black, outline: 'none', marginBottom: '14px', boxSizing: 'border-box' }} />
-      <div style={{ border: `1px solid ${T.gray100}`, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div style={{ border: `1px solid ${T.gray100}`, overflow: isMobile ? 'auto' : 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: isMobile ? '700px' : 'auto' }}>
           <thead>
             <tr style={{ background: T.black }}>
-              {['Name', 'Email', 'Company', 'KYC', 'VCS', 'Joined'].map(h => (
-                <th key={h} style={{ padding: '9px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: T.white, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</th>
+              {['Name', 'Email', 'Company', 'State', 'KYC', 'Depots', 'Orders', 'Joined'].map(h => (
+                <th key={h} style={{ padding: '9px 12px', textAlign: 'left', fontSize: '10px', fontWeight: 700, color: T.white, textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {filtered.map((u, i) => (
-              <tr key={u.id} style={{ borderBottom: `1px solid ${T.gray100}`, background: i % 2 === 0 ? T.white : T.gray50 }}>
+            {paged.map((u, i) => (
+              <tr key={u.id} style={{ borderBottom: `1px solid ${T.gray100}`, background: i % 2 === 0 ? T.white : T.gray50, cursor: 'pointer' }}
+                onClick={() => setExpanded(e => ({ ...e, [u.id]: !e[u.id] }))}>
                 <td style={{ padding: '9px 12px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
                     <div style={{ width: '26px', height: '26px', background: T.black, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 800, color: T.white, flexShrink: 0 }}>
@@ -696,15 +755,26 @@ function UsersTable({ isMobile }) {
                 </td>
                 <td style={{ padding: '9px 12px', fontSize: '11px', color: T.gray600 }}>{u.email || '—'}</td>
                 <td style={{ padding: '9px 12px', fontSize: '11px', color: T.gray600 }}>{u.company_name || '—'}</td>
+                <td style={{ padding: '9px 12px', fontSize: '11px', color: T.gray600 }}>{u.state || '—'}</td>
                 <td style={{ padding: '9px 12px' }}><Badge status={u.kyc_status || 'pending'} /></td>
-                <td style={{ padding: '9px 12px' }}><VcsPill score={u.vcs_score || 500} /></td>
-                <td style={{ padding: '9px 12px', fontSize: '11px', color: T.gray400 }}>{new Date(u.created_at).toLocaleDateString('en-NG')}</td>
+                <td style={{ padding: '9px 12px', fontSize: '11px', fontWeight: 700, color: depotCounts[u.id] ? T.black : T.gray400 }}>{depotCounts[u.id] || 0}</td>
+                <td style={{ padding: '9px 12px', fontSize: '11px', fontWeight: 700, color: orderCounts[u.id] ? T.black : T.gray400 }}>{orderCounts[u.id] || 0}</td>
+                <td style={{ padding: '9px 12px', fontSize: '11px', color: T.gray400, whiteSpace: 'nowrap' }}>{new Date(u.created_at).toLocaleDateString('en-NG')}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        {filtered.length === 0 && <div style={{ padding: '20px', textAlign: 'center', color: T.gray400, fontSize: '12px' }}>No users found</div>}
+        {paged.length === 0 && <div style={{ padding: '20px', textAlign: 'center', color: T.gray400, fontSize: '12px' }}>No users found</div>}
       </div>
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '14px' }}>
+          <button disabled={page === 0} onClick={() => setPage(p => p - 1)}
+            style={{ background: page === 0 ? T.gray100 : T.black, color: page === 0 ? T.gray400 : T.white, border: 'none', padding: '6px 12px', fontSize: '11px', fontWeight: 700, cursor: page === 0 ? 'default' : 'pointer', fontFamily: F }}>← Prev</button>
+          <span style={{ fontSize: '11px', color: T.gray600, fontWeight: 600 }}>Page {page + 1} of {totalPages}</span>
+          <button disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}
+            style={{ background: page >= totalPages - 1 ? T.gray100 : T.black, color: page >= totalPages - 1 ? T.gray400 : T.white, border: 'none', padding: '6px 12px', fontSize: '11px', fontWeight: 700, cursor: page >= totalPages - 1 ? 'default' : 'pointer', fontFamily: F }}>Next →</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -774,6 +844,230 @@ function Overview({ isMobile }) {
   );
 }
 
+// ── Disputes Review Tab ────────────────────────────────────────────────────────
+const DISPUTE_REASONS = {
+  quantity_short: 'Quantity Shortage',
+  quality_issue: 'Quality Issue',
+  late_delivery: 'Late Delivery',
+  wrong_product: 'Wrong Product',
+  damaged_goods: 'Damaged Goods',
+  pricing_error: 'Pricing Error',
+  other: 'Other',
+};
+
+function DisputesReview({ isMobile }) {
+  const [disputes, setDisputes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+  const [filter, setFilter] = useState('open');
+  const [expanded, setExpanded] = useState({});
+  const [acting, setActing] = useState({});
+  const [adminNotes, setAdminNotes] = useState({});
+  const [resolution, setResolution] = useState({});
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErr('');
+    try {
+      const { data, error } = await sb
+        .from('disputes')
+        .select('*, profiles!buyer_id(full_name, email, company_name), orders!order_id(id, total_value, total_volume, status, depots(name))')
+        .order('created_at', { ascending: false });
+      if (error) { setErr(error.message); setLoading(false); return; }
+      setDisputes(data || []);
+    } catch (e) { setErr(e.message); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const FILTERS = [
+    { value: 'open', label: 'Open' },
+    { value: 'under_review', label: 'Under Review' },
+    { value: 'resolved', label: 'Resolved' },
+    { value: 'closed', label: 'Closed' },
+    { value: 'all', label: 'All' },
+  ];
+
+  const counts = {
+    open: disputes.filter(d => d.status === 'open').length,
+    under_review: disputes.filter(d => d.status === 'under_review').length,
+    resolved: disputes.filter(d => d.status === 'resolved').length,
+    closed: disputes.filter(d => d.status === 'closed').length,
+    all: disputes.length,
+  };
+
+  const visible = filter === 'all' ? disputes : disputes.filter(d => d.status === filter);
+
+  const updateDispute = async (disputeId, newStatus, note) => {
+    setActing(a => ({ ...a, [disputeId]: newStatus }));
+    const updates = { status: newStatus };
+    if (note) updates.admin_note = note;
+    if (newStatus === 'resolved' || newStatus === 'closed') updates.resolved_at = new Date().toISOString();
+
+    const { error } = await sb.from('disputes').update(updates).eq('id', disputeId);
+    if (error) { setErr(error.message); setActing(a => ({ ...a, [disputeId]: null })); return; }
+
+    // If resolving, also update the order status back
+    const dispute = disputes.find(d => d.id === disputeId);
+    if (dispute && (newStatus === 'resolved' || newStatus === 'closed')) {
+      const resolveAs = resolution[disputeId] || 'delivered';
+      await sb.from('orders').update({ status: resolveAs }).eq('id', dispute.order_id);
+      await sb.from('order_status_logs').insert({
+        order_id: dispute.order_id,
+        to_status: resolveAs,
+        note: `Dispute ${newStatus} by admin. ${note || ''}`.trim(),
+      });
+    }
+
+    setDisputes(prev => prev.map(d => d.id === disputeId ? { ...d, status: newStatus, admin_note: note || d.admin_note, resolved_at: updates.resolved_at || d.resolved_at } : d));
+    setActing(a => ({ ...a, [disputeId]: null }));
+  };
+
+  if (loading) return <Spinner />;
+
+  return (
+    <div>
+      <ErrBanner msg={err} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+        <div style={{ fontSize: '12px', color: T.gray600, fontWeight: 600 }}>{disputes.length} total disputes · {counts.open} open</div>
+        <button onClick={load} style={{ background: T.black, color: T.white, border: 'none', padding: '6px 12px', fontSize: '10px', fontWeight: 800, cursor: 'pointer', fontFamily: F }}>Refresh</button>
+      </div>
+      <FilterBar filters={FILTERS} active={filter} counts={counts} onChange={setFilter} />
+
+      {visible.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '48px', color: T.gray400 }}>
+          <div style={{ fontSize: '32px', marginBottom: '12px' }}>✓</div>
+          <div style={{ fontSize: '14px', fontWeight: 700 }}>No {filter === 'all' ? '' : filter.replace('_', ' ')} disputes</div>
+        </div>
+      )}
+
+      {visible.map(d => {
+        const isOpen = d.status === 'open' || d.status === 'under_review';
+        const buyer = d.profiles || {};
+        const order = d.orders || {};
+        const depotName = order.depots?.name || '—';
+        const isExp = expanded[d.id];
+
+        return (
+          <div key={d.id} style={{
+            border: `2px solid ${d.status === 'open' ? T.red : d.status === 'under_review' ? T.amber : T.gray100}`,
+            background: T.white, marginBottom: '10px', overflow: 'hidden',
+          }}>
+            {/* Header */}
+            <div style={{ padding: '16px 18px', cursor: 'pointer' }} onClick={() => setExpanded(e => ({ ...e, [d.id]: !e[d.id] }))}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 800, color: T.black }}>{d.reference}</span>
+                    <Badge status={d.status === 'open' ? 'disputed' : d.status === 'under_review' ? 'pending' : d.status === 'resolved' ? 'delivered' : 'cancelled'} />
+                    <span style={{ fontSize: '10px', fontWeight: 700, color: T.gray400 }}>{new Date(d.created_at).toLocaleDateString('en-NG')}</span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: T.gray400 }}>
+                    Order: <span style={{ color: T.black, fontWeight: 700 }}>{d.order_id}</span> · Depot: <span style={{ fontWeight: 600 }}>{depotName}</span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: T.gray400, marginTop: '2px' }}>
+                    Buyer: <span style={{ fontWeight: 600 }}>{buyer.full_name || '—'}</span> · {buyer.company_name || buyer.email || '—'}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                  {order.total_value && <span style={{ fontSize: '12px', fontWeight: 800, color: T.black }}>₦{((order.total_value || 0) / 1e6).toFixed(1)}M</span>}
+                  <span style={{ fontSize: '10px', color: T.blue, fontWeight: 600 }}>{isExp ? '▲ Hide' : '▼ Details'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Expanded details */}
+            {isExp && (
+              <div style={{ borderTop: `1px solid ${T.gray100}`, padding: '16px 18px' }}>
+                {/* Reason & Details */}
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+                  <div style={{ background: T.gray50, padding: '12px 14px', border: `1px solid ${T.gray100}` }}>
+                    <div style={{ fontSize: '9px', fontWeight: 700, color: T.gray400, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>Reason</div>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: T.black }}>{DISPUTE_REASONS[d.reason] || d.reason}</div>
+                  </div>
+                  <div style={{ background: T.gray50, padding: '12px 14px', border: `1px solid ${T.gray100}` }}>
+                    <div style={{ fontSize: '9px', fontWeight: 700, color: T.gray400, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>Order Value</div>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: T.black }}>₦{(order.total_value || 0).toLocaleString()} · {((order.total_volume || 0) / 1000).toFixed(0)}k L</div>
+                  </div>
+                </div>
+
+                <div style={{ background: T.gray50, padding: '12px 14px', border: `1px solid ${T.gray100}`, marginBottom: '14px' }}>
+                  <div style={{ fontSize: '9px', fontWeight: 700, color: T.gray400, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>Details</div>
+                  <div style={{ fontSize: '12px', color: T.black, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{d.details}</div>
+                </div>
+
+                {/* Evidence */}
+                {d.evidence_urls && d.evidence_urls.length > 0 && (
+                  <div style={{ marginBottom: '14px' }}>
+                    <div style={{ fontSize: '10px', fontWeight: 700, color: T.gray400, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>Evidence ({d.evidence_urls.length} file{d.evidence_urls.length !== 1 ? 's' : ''})</div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {d.evidence_urls.map((url, i) => (
+                        <a key={i} href={url} target="_blank" rel="noreferrer"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: T.blueLight, border: `1px solid ${T.blue}20`, padding: '8px 12px', fontSize: '11px', fontWeight: 700, color: T.blue, textDecoration: 'none' }}>
+                          📎 File {i + 1} — View
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Admin note (if already set) */}
+                {d.admin_note && (
+                  <div style={{ background: T.greenLight, border: `1px solid ${T.green}40`, padding: '12px 14px', marginBottom: '14px' }}>
+                    <div style={{ fontSize: '9px', fontWeight: 700, color: T.greenDark, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>Admin Resolution Note</div>
+                    <div style={{ fontSize: '12px', color: T.greenDark, fontWeight: 600 }}>{d.admin_note}</div>
+                    {d.resolved_at && <div style={{ fontSize: '10px', color: T.gray400, marginTop: '4px' }}>Resolved: {new Date(d.resolved_at).toLocaleString('en-NG')}</div>}
+                  </div>
+                )}
+
+                {/* Action buttons for open/under_review disputes */}
+                {isOpen && (
+                  <div style={{ borderTop: `1px solid ${T.gray100}`, paddingTop: '14px' }}>
+                    <div style={{ marginBottom: '10px' }}>
+                      <div style={{ fontSize: '10px', fontWeight: 700, color: T.gray400, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Admin Note / Resolution</div>
+                      <textarea value={adminNotes[d.id] || ''} onChange={e => setAdminNotes(n => ({ ...n, [d.id]: e.target.value }))}
+                        placeholder="Describe the resolution or investigation notes…"
+                        style={{ width: '100%', border: `1px solid ${T.gray200}`, padding: '10px 12px', fontFamily: F, fontSize: '12px', minHeight: '70px', resize: 'vertical', outline: 'none', boxSizing: 'border-box' }} />
+                    </div>
+                    <div style={{ marginBottom: '12px' }}>
+                      <div style={{ fontSize: '10px', fontWeight: 700, color: T.gray400, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Resolve Order As</div>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        {[['delivered', 'Delivered'], ['collected', 'Collected']].map(([val, label]) => (
+                          <button key={val} onClick={() => setResolution(r => ({ ...r, [d.id]: val }))}
+                            style={{ background: (resolution[d.id] || 'delivered') === val ? T.black : T.white, color: (resolution[d.id] || 'delivered') === val ? T.white : T.gray600, border: `1px solid ${(resolution[d.id] || 'delivered') === val ? T.black : T.gray200}`, padding: '6px 14px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', fontFamily: F }}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {d.status === 'open' && (
+                        <button disabled={!!acting[d.id]} onClick={() => updateDispute(d.id, 'under_review', adminNotes[d.id])}
+                          style={{ background: T.amber, color: T.white, border: 'none', padding: '9px 16px', fontSize: '11px', fontWeight: 800, cursor: acting[d.id] ? 'not-allowed' : 'pointer', fontFamily: F, opacity: acting[d.id] ? 0.6 : 1 }}>
+                          {acting[d.id] === 'under_review' ? 'Updating…' : 'Mark Under Review'}
+                        </button>
+                      )}
+                      <button disabled={!!acting[d.id] || !adminNotes[d.id]?.trim()} onClick={() => updateDispute(d.id, 'resolved', adminNotes[d.id])}
+                        style={{ background: adminNotes[d.id]?.trim() ? T.green : T.gray200, color: adminNotes[d.id]?.trim() ? T.white : T.gray400, border: 'none', padding: '9px 16px', fontSize: '11px', fontWeight: 800, cursor: adminNotes[d.id]?.trim() ? 'pointer' : 'not-allowed', fontFamily: F, opacity: acting[d.id] ? 0.6 : 1 }}>
+                        {acting[d.id] === 'resolved' ? 'Resolving…' : 'Resolve Dispute ✓'}
+                      </button>
+                      <button disabled={!!acting[d.id]} onClick={() => updateDispute(d.id, 'closed', adminNotes[d.id] || 'Closed without resolution')}
+                        style={{ background: T.white, color: T.gray600, border: `1px solid ${T.gray200}`, padding: '9px 16px', fontSize: '11px', fontWeight: 800, cursor: acting[d.id] ? 'not-allowed' : 'pointer', fontFamily: F }}>
+                        {acting[d.id] === 'closed' ? 'Closing…' : 'Close'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Root AdminPanel ────────────────────────────────────────────────────────────
 export function AdminPanel({ isMobile }) {
   const [tab, setTab] = useState('overview');
@@ -801,6 +1095,7 @@ export function AdminPanel({ isMobile }) {
     { id: 'kyc',      label: 'KYC Review',  icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
     { id: 'kyb',      label: 'KYB Review',  icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4' },
     { id: 'orders',   label: 'All Orders',  icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
+    { id: 'disputes', label: 'Disputes',   icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z' },
     { id: 'pricing',  label: 'Pricing',     icon: 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z' },
     { id: 'users',    label: 'Users',       icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0' },
   ];
@@ -810,6 +1105,7 @@ export function AdminPanel({ isMobile }) {
     kyc:      <KycReview isMobile={isMobile} />,
     kyb:      <KybReview isMobile={isMobile} />,
     orders:   <AllOrders isMobile={isMobile} />,
+    disputes: <DisputesReview isMobile={isMobile} />,
     pricing:  <PricingEngine isMobile={isMobile} />,
     users:    <UsersTable isMobile={isMobile} />,
   };

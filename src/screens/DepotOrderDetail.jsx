@@ -156,13 +156,15 @@ function DepotOrderDetail({isMobile}) {
   const isDelivery=!delivery||delivery.mode==="delivery";
   const isPickup=delivery?.mode==="pickup";
 
+  const isDisputed=liveStatus==="disputed";
+  const isTerminal=["rejected","cancelled"].includes(liveStatus);
   const STATUS_STEPS=isPickup
     ?["pending","confirmed","loading","collected"]
     :["pending","confirmed","loading","in_transit","delivered"];
   const STEP_LABELS=isPickup
     ?["Received","Confirmed","Loading","Collected"]
     :["Received","Confirmed","Loading","Dispatched","Delivered"];
-  const currentStep=Math.max(0,STATUS_STEPS.indexOf(liveStatus));
+  const currentStep=isTerminal?-1:isDisputed?Math.max(0,STATUS_STEPS.indexOf("in_transit")):Math.max(0,STATUS_STEPS.indexOf(liveStatus));
   const BAYS=["Bay 1","Bay 2","Bay 3"];
   const allTrucksDelivered=liveTrucks.length>0&&liveTrucks.every(t=>t.status==="delivered");
 
@@ -226,18 +228,24 @@ function DepotOrderDetail({isMobile}) {
       </div>
 
       {/* Status Stepper */}
-      {liveStatus!=="rejected"&&(
+      {!isTerminal&&(
         <Card style={{marginBottom:"14px"}}>
           <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",position:"relative",paddingBottom:"4px"}}>
             <div style={{position:"absolute",top:"13px",left:"13px",right:"13px",height:"2px",background:T.gray100,zIndex:0}}/>
-            <div style={{position:"absolute",top:"13px",left:"13px",height:"2px",width:`${Math.max(0,(currentStep/(STATUS_STEPS.length-1))*100)}%`,background:T.green,zIndex:1,transition:"width 0.5s"}}/>
+            <div style={{position:"absolute",top:"13px",left:"13px",height:"2px",width:`${Math.max(0,(currentStep/(STATUS_STEPS.length-1))*100)}%`,
+              background:isDisputed?"#D97706":T.green,zIndex:1,transition:"width 0.5s"}}/>
             {STATUS_STEPS.map((s,i)=>{
               const done=i<currentStep;
               const active=i===currentStep;
               return (
                 <div key={s} style={{display:"flex",flexDirection:"column",alignItems:"center",flex:1,position:"relative",zIndex:2}}>
-                  <div style={{width:"26px",height:"26px",borderRadius:"50%",background:done?T.green:active?T.black:T.white,border:`2px solid ${done?T.green:active?T.black:T.gray200}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"10px",fontWeight:800,color:done||active?T.white:T.gray400,transition:"all 0.3s",boxShadow:active?"0 0 0 4px rgba(0,0,0,0.1)":"none"}}>
-                    {done?"✓":i+1}
+                  <div style={{width:"26px",height:"26px",borderRadius:"50%",
+                    background:done?T.green:active?(isDisputed?"#D97706":T.black):T.white,
+                    border:`2px solid ${done?T.green:active?(isDisputed?"#D97706":T.black):T.gray200}`,
+                    display:"flex",alignItems:"center",justifyContent:"center",fontSize:"10px",fontWeight:800,
+                    color:done||active?T.white:T.gray400,transition:"all 0.3s",
+                    boxShadow:active?`0 0 0 4px ${isDisputed?"rgba(217,119,6,0.18)":"rgba(0,0,0,0.1)"}`:"none"}}>
+                    {done?"✓":active&&isDisputed?"⚠":i+1}
                   </div>
                   <div style={{marginTop:"5px",fontSize:"9px",fontWeight:700,color:done||active?T.black:T.gray400,textTransform:"uppercase",letterSpacing:"0.03em",textAlign:"center"}}>{STEP_LABELS[i]}</div>
                 </div>
@@ -251,6 +259,18 @@ function DepotOrderDetail({isMobile}) {
         <div style={{background:T.redLight,border:`1px solid ${T.red}`,padding:"14px 18px",marginBottom:"14px"}}>
           <div style={{fontSize:"13px",fontWeight:800,color:T.red}}>Order Rejected</div>
           <div style={{fontSize:"11px",color:T.red,marginTop:"2px"}}>Payment has been returned to the buyer. This order is closed.</div>
+        </div>
+      )}
+
+      {isDisputed&&(
+        <div style={{background:T.amberLight,border:`2px solid #D97706`,padding:"16px 18px",marginBottom:"14px",display:"flex",alignItems:"center",gap:"14px"}}>
+          <div style={{width:"40px",height:"40px",borderRadius:"50%",background:"#FEF3C7",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"20px",flexShrink:0,border:"2px solid #D97706"}}>⚠</div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:"14px",fontWeight:800,color:"#92400E"}}>Dispute Filed by Buyer</div>
+            <div style={{fontSize:"11px",color:"#92400E",marginTop:"3px",lineHeight:1.5}}>
+              The buyer has raised a dispute on this order. Ventryl's team will review and resolve within 24–48 hours. You will be notified of the outcome.
+            </div>
+          </div>
         </div>
       )}
 
@@ -675,6 +695,18 @@ function DepotOrderDetail({isMobile}) {
         <div style={{background:T.redLight,border:`1px solid ${T.red}`,padding:"14px 18px",marginBottom:"14px"}}>
           <div style={{fontSize:"13px",fontWeight:800,color:T.red}}>Order Rejected</div>
           <div style={{fontSize:"11px",color:T.red,marginTop:"2px"}}>Payment has been returned to the buyer. This order is closed.</div>
+        </div>
+      )}
+
+      {isDisputed&&(
+        <div style={{background:T.amberLight,border:`2px solid #D97706`,padding:"16px 18px",marginBottom:"14px",display:"flex",alignItems:"center",gap:"14px"}}>
+          <div style={{width:"40px",height:"40px",borderRadius:"50%",background:"#FEF3C7",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"20px",flexShrink:0,border:"2px solid #D97706"}}>⚠</div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:"14px",fontWeight:800,color:"#92400E"}}>Dispute Filed by Buyer</div>
+            <div style={{fontSize:"11px",color:"#92400E",marginTop:"3px",lineHeight:1.5}}>
+              A dispute has been filed on this order. Ventryl's team will review and resolve within 24–48 hours.
+            </div>
+          </div>
         </div>
       )}
 
