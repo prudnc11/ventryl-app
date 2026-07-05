@@ -62,33 +62,16 @@ function BuyerWallet({isMobile}) {
   const CURRENCIES={
     NGN:{symbol:"₦",label:"Nigerian Naira",balance:walletNGN?.balanceNGN??0,fmt:(n)=>`₦${n.toLocaleString('en-NG')}`,rate:null,flag:"🇳🇬",
       txn:walletNGN?.txn??[],},
-    USD:{symbol:"$",label:"US Dollar",balance:15770.42,fmt:(n)=>`$${n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`,rate:"1 USD = ₦1,638",flag:"🇺🇸",
-      txn:[
-        {id:"TXN-D421",desc:"Wallet Funding (Bank Transfer)",amount:"+$10,000.00",date:"Mar 10",type:"credit"},
-        {id:"TXN-D418",desc:"Order VTL-00841 — Payment",amount:"-$43,772.00",date:"Mar 8",type:"debit"},
-      ]},
-    USDT:{symbol:"",label:"Tether (USDT)",balance:15770.42,fmt:(n)=>`${n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})} USDT`,rate:"1 USDT ≈ $1.00",flag:"₮",
-      txn:[
-        {id:"TXN-U421",desc:"USDT Deposit (On-chain)",amount:"+10,000 USDT",date:"Mar 10",type:"credit"},
-        {id:"TXN-U420",desc:"Order VTL-00840 (converted to NGN)",amount:"-23,872.14 USDT",date:"Mar 9",type:"debit"},
-      ]},
   };
 
   const cur=CURRENCIES[currency];
-  const TABS=["NGN","USD","USDT"];
+  const TABS=["NGN"];
 
   return (
     <div>
       {/* Hero header */}
       <div style={{background:T.black,padding:isMobile?"18px 16px":"24px 28px",marginBottom:"14px"}}>
-        {/* Currency tabs */}
-        <div style={{display:"flex",gap:"0",marginBottom:"20px",borderBottom:"1px solid #222"}}>
-          {TABS.map(tab=>(
-            <button key={tab} onClick={()=>setCurrency(tab)} style={{padding:"8px 16px",background:"none",border:"none",cursor:"pointer",fontFamily:F,fontSize:"12px",fontWeight:currency===tab?800:600,color:currency===tab?T.white:"#666",borderBottom:`2px solid ${currency===tab?T.green:"transparent"}`,marginBottom:"-1px",transition:"all 0.15s"}}>
-              {CURRENCIES[tab].flag} {tab}
-            </button>
-          ))}
-        </div>
+        <div style={{marginBottom:"20px"}}></div>
 
         <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:"24px"}}>
           <div>
@@ -98,7 +81,6 @@ function BuyerWallet({isMobile}) {
             <div style={{display:"flex",gap:"10px",marginTop:"16px"}}>
               <button onClick={()=>{setShowFund(true);setFundDone(false);setFundAmt("");}} style={{background:T.green,color:T.black,border:"none",padding:"9px 16px",fontSize:"12px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"40px"}}>+ Fund</button>
               <button onClick={()=>{setShowWithdraw(true);setWithdrawDone(false);setWithdrawAmt("");}} style={{background:"transparent",color:T.white,border:"1px solid #333",padding:"9px 16px",fontSize:"12px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"40px"}}>Withdraw</button>
-              {currency!=="NGN"&&<button style={{background:"transparent",color:T.white,border:"1px solid #333",padding:"9px 16px",fontSize:"12px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"40px"}}>Convert</button>}
             </div>
           </div>
           {/* Active orders summary */}
@@ -115,16 +97,6 @@ function BuyerWallet({isMobile}) {
         </div>
       </div>
 
-      {/* Balances across currencies */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"1px",background:T.gray100,border:`1px solid ${T.gray100}`,marginBottom:"14px"}}>
-        {TABS.map(tab=>(
-          <div key={tab} onClick={()=>setCurrency(tab)} style={{background:currency===tab?T.black:T.white,padding:"16px 18px",cursor:"pointer",transition:"background 0.15s"}}>
-            <div style={{fontSize:"10px",fontWeight:700,color:currency===tab?T.gray400:"#8C8C8C",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:"4px"}}>{CURRENCIES[tab].flag} {tab}</div>
-            <div style={{fontSize:"16px",fontWeight:800,color:currency===tab?T.green:T.black,lineHeight:1}}>{CURRENCIES[tab].fmt(CURRENCIES[tab].balance)}</div>
-            {CURRENCIES[tab].rate&&<div style={{fontSize:"9px",color:currency===tab?"#666":T.gray400,marginTop:"3px"}}>{CURRENCIES[tab].rate}</div>}
-          </div>
-        ))}
-      </div>
 
       {/* Transaction history */}
       <Card pad={false}>
@@ -197,10 +169,10 @@ function BuyerWallet({isMobile}) {
                 </div>
                 <div style={{display:"flex",gap:"8px"}}>
                   <button
-                    onClick={currency==="NGN"?handlePaystackFund:()=>setFundDone(true)}
+                    onClick={handlePaystackFund}
                     disabled={!fundAmt||fundLoading}
                     style={{flex:1,background:fundAmt&&!fundLoading?T.green:T.gray200,color:fundAmt&&!fundLoading?T.white:T.gray400,border:"none",padding:"11px",fontSize:"13px",fontWeight:800,cursor:fundAmt&&!fundLoading?"pointer":"not-allowed",fontFamily:F,minHeight:"44px"}}>
-                    {fundLoading?"Opening Paystack…":currency==="NGN"?"Pay with Paystack →":"Confirm"}
+                    {fundLoading?"Opening Paystack…":"Pay with Paystack →"}
                   </button>
                   <button onClick={()=>{setShowFund(false);setFundErr("");setFundAmt("");}} style={{flex:1,background:"none",color:T.black,border:`1px solid ${T.gray200}`,padding:"11px",fontSize:"13px",fontWeight:700,cursor:"pointer",fontFamily:F,minHeight:"44px"}}>Cancel</button>
                 </div>
@@ -223,15 +195,13 @@ function BuyerWallet({isMobile}) {
               </div>
             ):(
               <>
-                <div style={{fontSize:"16px",fontWeight:800,color:T.black,marginBottom:"4px"}}>Withdraw {cur.label}</div>
+                <div style={{fontSize:"16px",fontWeight:800,color:T.black,marginBottom:"4px"}}>Withdraw NGN</div>
                 <div style={{fontSize:"11px",color:T.gray400,marginBottom:"20px"}}>Available: {cur.fmt(cur.balance)}</div>
-                <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:"6px"}}>Amount ({currency})</div>
+                <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:"6px"}}>Amount (NGN)</div>
                 <input type="number" value={withdrawAmt} onChange={e=>setWithdrawAmt(e.target.value)} placeholder="Enter amount"
                   style={{width:"100%",border:`1px solid ${T.gray200}`,padding:"12px 14px",fontFamily:F,fontSize:"15px",fontWeight:700,color:T.black,outline:"none",marginBottom:"16px"}}/>
                 <div style={{background:T.gray50,padding:"10px 14px",fontSize:"11px",color:T.gray400,marginBottom:"20px"}}>
-                  {currency==="NGN"&&`To: ${authProfile?.bank_name||"Bank"} · ${authProfile?.bank_account||"—"} · ${authProfile?.company_name||""}`}
-                  {currency==="USD"&&"To: Chase · Account ending 4321"}
-                  {currency==="USDT"&&"To: TRC-20 wallet · Paste your address below"}
+                  To: {authProfile?.bank_name||"Bank"} · {authProfile?.bank_account||"—"} · {authProfile?.company_name||""}
                 </div>
                 <div style={{display:"flex",gap:"8px"}}>
                   <button onClick={()=>setWithdrawDone(true)} disabled={!withdrawAmt} style={{flex:1,background:withdrawAmt?T.black:T.gray200,color:withdrawAmt?T.white:T.gray400,border:"none",padding:"11px",fontSize:"13px",fontWeight:800,cursor:withdrawAmt?"pointer":"not-allowed",fontFamily:F,minHeight:"44px"}}>Withdraw</button>

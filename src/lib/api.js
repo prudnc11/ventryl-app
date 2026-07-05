@@ -232,7 +232,10 @@ export const orders = {
   async create({ buyerId, depotId, deliveryMode, deliveryState, deliveryLga, deliveryAddress, pickupNote, items, vatPercent }) {
     const totalVolume = items.reduce((s, i) => s + i.volume, 0);
     const totalValue = items.reduce((s, i) => s + i.pricePerLitre * i.volume, 0);
-    const platformFee = Math.round(totalValue * 0.01);
+    // Fetch platform fee percentage from DB (fallback to 1%)
+    const { data: feeRow } = await supabase.from('platform_settings').select('value').eq('key', 'platform_fee_percent').maybeSingle();
+    const feePercent = parseFloat(feeRow?.value) || 1;
+    const platformFee = Math.round(totalValue * (feePercent / 100));
     const vatRate = (vatPercent ?? 7.5) / 100;
     const vat = Math.round(totalValue * vatRate);
     const netToDepot = totalValue + vat;

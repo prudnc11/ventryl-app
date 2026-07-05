@@ -3,7 +3,7 @@
  * Only accessible when profile.is_admin === true.
  * Tabs: Overview · KYC Review · KYB Review · Orders · Pricing · Users
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase as sb } from '../lib/supabase';
 
 // ── Design tokens (mirror App.jsx) ────────────────────────────────────────────
@@ -534,6 +534,16 @@ function PricingEngine({ isMobile }) {
   const [history, setHistory] = useState([]);
   const [err, setErr] = useState('');
 
+  // Platform fee state
+  const [currentFee, setCurrentFee] = useState(null); // current % from DB
+  const [feeInput, setFeeInput] = useState('');
+  const [feeStep, setFeeStep] = useState('idle'); // idle | confirm | otp | saving | done
+  const [otp, setOtp] = useState('');
+  const [generatedOtp, setGeneratedOtp] = useState('');
+  const [otpErr, setOtpErr] = useState('');
+  const [feeLog, setFeeLog] = useState([]);
+  const otpSentTo = useRef('');
+
   useEffect(() => {
     (async () => {
       // Load latest price per product
@@ -551,6 +561,17 @@ function PricingEngine({ isMobile }) {
       const { data: hist } = await sb.from('price_history').select('*')
         .order('recorded_at', { ascending: false }).limit(30);
       setHistory(hist || []);
+
+      // Load current platform fee
+      const { data: feeRow } = await sb.from('platform_settings').select('value, updated_at')
+        .eq('key', 'platform_fee_percent').maybeSingle();
+      if (feeRow) { setCurrentFee(parseFloat(feeRow.value)); setFeeInput(feeRow.value); }
+      else { setCurrentFee(1); setFeeInput('1'); }
+
+      // Load fee change log
+      const { data: fLog } = await sb.from('platform_settings_log').select('*')
+        .eq('key', 'platform_fee_percent').order('changed_at', { ascending: false }).limit(10);
+      setFeeLog(fLog || []);
     })();
   }, []);
 
@@ -578,9 +599,187 @@ function PricingEngine({ isMobile }) {
     return ((curr - prev) / prev * 100).toFixed(1);
   };
 
+  // Fee change flow: Step 1 → confirm, Step 2 → generate & send OTP, Step 3 → verify & save
+  const handleFeeConfirm = async () => {
+    const val = parseFloat(feeInput);
+    if (isNaN(val) || val < 0 || val > 50) { setOtpErr('Fee must be between 0% and 50%'); return; }
+    if (val === currentFee) { setOtpErr('No change detected'); return; }
+    setOtpErr('');
+    // Generate 6-digit OTP
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    setGeneratedOtp(code);
+    // Get admin email
+    const { data: { session } } = await sb.auth.getSession();
+    const email = session?.user?.email || '';
+    otpSentTo.current = email;
+    // In production, send OTP via email. For now, we show it in an alert for testing.
+    // TODO: Replace with actual email send via Edge Function
+    window.alert(`Your OTP verification code is: ${code}\n\nSent to: ${email}\n\n(In production, this will be sent via email)`);
+    setFeeStep('otp');
+  };
+
+  const handleOtpVerify = async () => {
+    if (otp !== generatedOtp) { setOtpErr('Invalid OTP code. Please try again.'); return; }
+    setFeeStep('saving');
+    setOtpErr('');
+    const val = parseFloat(feeInput);
+    const { data: { session } } = await sb.auth.getSession();
+    const userId = session?.user?.id;
+
+    // Log the change
+    await sb.from('platform_settings_log').insert({
+      key: 'platform_fee_percent',
+      old_value: String(currentFee),
+      new_value: String(val),
+      changed_by: userId,
+      method: 'admin',
+    });
+
+    // Update the setting
+    const { error } = await sb.from('platform_settings').upsert({
+      key: 'platform_fee_percent',
+      value: String(val),
+      updated_at: new Date().toISOString(),
+      updated_by: userId,
+    });
+
+    if (error) { setOtpErr(error.message); setFeeStep('otp'); return; }
+    setCurrentFee(val);
+    setFeeStep('done');
+    // Refresh log
+    const { data: fLog } = await sb.from('platform_settings_log').select('*')
+      .eq('key', 'platform_fee_percent').order('changed_at', { ascending: false }).limit(10);
+    setFeeLog(fLog || []);
+  };
+
+  const resetFeeFlow = () => {
+    setFeeStep('idle');
+    setOtp('');
+    setGeneratedOtp('');
+    setOtpErr('');
+    setFeeInput(String(currentFee));
+  };
+
   return (
     <div>
       <ErrBanner msg={err} />
+
+      {/* ── PLATFORM FEE SECTION ── */}
+      <div style={{ border: `2px solid ${T.black}`, background: T.white, padding: '20px 22px', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: 800, color: T.black }}>Platform Fee</div>
+            <div style={{ fontSize: '11px', color: T.gray400, marginTop: '2px' }}>Applied to every order as a percentage of product value</div>
+          </div>
+          <div style={{ background: T.black, color: T.green, fontSize: '20px', fontWeight: 900, padding: '6px 14px' }}>
+            {currentFee !== null ? `${currentFee}%` : '—'}
+          </div>
+        </div>
+
+        {feeStep === 'idle' && (
+          <div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: T.gray400, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>New Fee Percentage (%)</div>
+                <input type="number" step="0.1" min="0" max="50" value={feeInput} onChange={e => setFeeInput(e.target.value)}
+                  style={{ width: '100%', border: `1px solid ${T.gray200}`, padding: '10px 12px', fontFamily: F, fontSize: '15px', fontWeight: 700, color: T.black, outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+              <button onClick={() => { setOtpErr(''); setFeeStep('confirm'); }}
+                disabled={!feeInput || parseFloat(feeInput) === currentFee}
+                style={{ background: parseFloat(feeInput) !== currentFee ? T.black : T.gray200, color: parseFloat(feeInput) !== currentFee ? T.white : T.gray400, border: 'none', padding: '10px 18px', fontSize: '12px', fontWeight: 800, cursor: parseFloat(feeInput) !== currentFee ? 'pointer' : 'not-allowed', fontFamily: F, minHeight: '44px', whiteSpace: 'nowrap' }}>
+                Change Fee
+              </button>
+            </div>
+            {otpErr && <div style={{ fontSize: '11px', color: T.red, fontWeight: 600, marginTop: '8px' }}>{otpErr}</div>}
+          </div>
+        )}
+
+        {/* Confirm step */}
+        {feeStep === 'confirm' && (
+          <div style={{ background: T.amberLight, border: `1px solid ${T.amber}`, padding: '16px 18px' }}>
+            <div style={{ fontSize: '13px', fontWeight: 800, color: '#8A5C00', marginBottom: '8px' }}>Confirm Fee Change</div>
+            <div style={{ fontSize: '12px', color: '#8A5C00', lineHeight: 1.6, marginBottom: '14px' }}>
+              You are changing the platform fee from <strong>{currentFee}%</strong> to <strong>{feeInput}%</strong>.<br/>
+              This will affect all new orders placed after this change. Existing orders are not affected.<br/>
+              An OTP verification code will be sent to your email to authorize this change.
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button onClick={handleFeeConfirm}
+                style={{ background: T.black, color: T.white, border: 'none', padding: '10px 18px', fontSize: '12px', fontWeight: 800, cursor: 'pointer', fontFamily: F, minHeight: '42px' }}>
+                Send OTP & Proceed
+              </button>
+              <button onClick={resetFeeFlow}
+                style={{ background: 'none', color: T.black, border: `1px solid ${T.gray200}`, padding: '10px 18px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: F, minHeight: '42px' }}>
+                Cancel
+              </button>
+            </div>
+            {otpErr && <div style={{ fontSize: '11px', color: T.red, fontWeight: 600, marginTop: '8px' }}>{otpErr}</div>}
+          </div>
+        )}
+
+        {/* OTP verification step */}
+        {feeStep === 'otp' && (
+          <div style={{ background: T.blueLight, border: `1px solid ${T.blue}`, padding: '16px 18px' }}>
+            <div style={{ fontSize: '13px', fontWeight: 800, color: T.blue, marginBottom: '4px' }}>OTP Verification Required</div>
+            <div style={{ fontSize: '11px', color: T.blue, marginBottom: '14px' }}>
+              Enter the 6-digit code sent to <strong>{otpSentTo.current}</strong>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+              <input type="text" inputMode="numeric" maxLength={6} value={otp} onChange={e => { setOtp(e.target.value.replace(/\D/g, '').slice(0, 6)); setOtpErr(''); }}
+                placeholder="000000" autoFocus
+                style={{ width: '160px', border: `2px solid ${T.blue}`, padding: '10px 14px', fontFamily: F, fontSize: '20px', fontWeight: 800, color: T.black, outline: 'none', textAlign: 'center', letterSpacing: '0.3em' }} />
+              <button onClick={handleOtpVerify} disabled={otp.length !== 6}
+                style={{ background: otp.length === 6 ? T.green : T.gray200, color: otp.length === 6 ? T.white : T.gray400, border: 'none', padding: '10px 18px', fontSize: '12px', fontWeight: 800, cursor: otp.length === 6 ? 'pointer' : 'not-allowed', fontFamily: F, minHeight: '44px' }}>
+                Verify & Apply
+              </button>
+              <button onClick={resetFeeFlow}
+                style={{ background: 'none', color: T.black, border: `1px solid ${T.gray200}`, padding: '10px 18px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: F, minHeight: '44px' }}>
+                Cancel
+              </button>
+            </div>
+            {otpErr && <div style={{ fontSize: '11px', color: T.red, fontWeight: 600, marginTop: '8px' }}>{otpErr}</div>}
+          </div>
+        )}
+
+        {/* Saving step */}
+        {feeStep === 'saving' && (
+          <div style={{ padding: '16px', textAlign: 'center' }}>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: T.gray400 }}>Applying fee change...</div>
+          </div>
+        )}
+
+        {/* Done step */}
+        {feeStep === 'done' && (
+          <div style={{ background: T.greenLight, border: `1px solid ${T.green}`, padding: '16px 18px' }}>
+            <div style={{ fontSize: '13px', fontWeight: 800, color: T.greenDark, marginBottom: '4px' }}>Fee Updated Successfully</div>
+            <div style={{ fontSize: '12px', color: T.greenDark, marginBottom: '12px' }}>
+              Platform fee changed to <strong>{currentFee}%</strong>. All new orders will use this rate.
+            </div>
+            <button onClick={resetFeeFlow}
+              style={{ background: T.black, color: T.white, border: 'none', padding: '8px 16px', fontSize: '12px', fontWeight: 800, cursor: 'pointer', fontFamily: F }}>
+              Done
+            </button>
+          </div>
+        )}
+
+        {/* Fee change audit log */}
+        {feeLog.length > 0 && (
+          <div style={{ marginTop: '16px', borderTop: `1px solid ${T.gray100}`, paddingTop: '12px' }}>
+            <div style={{ fontSize: '10px', fontWeight: 700, color: T.gray400, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Fee Change History</div>
+            {feeLog.map((l, i) => (
+              <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: i < feeLog.length - 1 ? `1px solid ${T.gray100}` : 'none', fontSize: '11px' }}>
+                <span style={{ color: T.gray600 }}>
+                  <strong style={{ color: T.black }}>{l.old_value}%</strong> → <strong style={{ color: T.green }}>{l.new_value}%</strong>
+                </span>
+                <span style={{ color: T.gray400 }}>{new Date(l.changed_at).toLocaleDateString('en-NG', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── PRODUCT PRICES ── */}
+      <SectionHead title="Product Prices" sub="Set benchmark price per litre for each product" />
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px', marginBottom: '20px' }}>
         {PRODUCTS.map(p => {
           const info = prices[p];
