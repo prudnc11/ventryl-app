@@ -768,7 +768,8 @@ function DepotOrderDetail({isMobile}) {
             <button
               onClick={()=>{
                 const v=meta.vol||raw.vol||0;
-                const ppl=meta?.pricePerLitre||(v>0&&finials.productValue?Math.round(finials.productValue/v):0);
+                const totalVal=finials.productValue||meta?.value||raw?.total_value||0;
+                const ppl=meta?.pricePerLitre||(v>0&&totalVal?Math.round(totalVal/v):0);
                 const invoiceItems=isMultiDepot&&meta.products?meta.products.map(p=>({product:p.name,vol:p.vol,pricePerLitre:p.pricePerLitre||(p.value&&p.vol?Math.round(p.value/p.vol):ppl)})):null;
                 printInvoice({
                   orderId,

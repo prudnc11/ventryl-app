@@ -255,6 +255,13 @@ function BuyerOrderDetail({isMobile}) {
   const [liveStatus,setLiveStatus]=useState(()=>_orderStatusStore[orderId]||order?.status||"pending");
   const [liveTrucks,setLiveTrucks]=useState(()=>_orderTruckListStore[orderId]||(meta.trucks_detail||[]).map(t=>({...t})));
   const [deliveryConfirmed,setDeliveryConfirmed]=useState(()=>_buyerConfirmedStore[orderId]||false);
+  // Persist deliveryConfirmed from timeline logs (survives page reload)
+  useEffect(()=>{
+    if(deliveryConfirmed) return;
+    const tl=meta?.timeline||[];
+    const confirmed=tl.some(t=>t.note&&t.note.toLowerCase().includes("receipt confirmed"));
+    if(confirmed){_buyerConfirmedStore[orderId]=true;setDeliveryConfirmed(true);}
+  },[meta?.timeline]);
   const [showConfirmModal,setShowConfirmModal]=useState(false);
   const [showDispute,setShowDispute]=useState(false);
   const [activeTab,setActiveTab]=useState("tracking");  // tracking | details | payment
@@ -480,7 +487,8 @@ function BuyerOrderDetail({isMobile}) {
           {deliveryConfirmed&&(
             <button
               onClick={()=>{
-                const ppl=meta?.pricePerLitre||order?.pricePerLitre||(vol>0&&finials.productValue?Math.round(finials.productValue/vol):0);
+                const totalVal=finials.productValue||meta?.value||order?.value||0;
+                const ppl=meta?.pricePerLitre||order?.pricePerLitre||(vol>0&&totalVal?Math.round(totalVal/vol):0);
                 const invoiceItems=isMulti&&meta.products?meta.products.map(p=>({product:p.name,vol:p.vol,pricePerLitre:p.pricePerLitre||(p.value&&p.vol?Math.round(p.value/p.vol):ppl)})):null;
                 printInvoice({
                   orderId,
@@ -535,7 +543,7 @@ function BuyerOrderDetail({isMobile}) {
                 orderId,
                 product,
                 vol,
-                pricePerLitre:meta?.pricePerLitre||order?.pricePerLitre||(vol>0&&finials.productValue?Math.round(finials.productValue/vol):0),
+                pricePerLitre:meta?.pricePerLitre||order?.pricePerLitre||(vol>0&&(finials.productValue||meta?.value||order?.value)?Math.round((finials.productValue||meta?.value||order?.value)/vol):0),
                 buyer:buyerInfo.company||order?.buyer||"",
                 buyerAddr:buyerInfo.location||"Lagos, Nigeria",
                 buyerRc:buyerInfo.rc||"",
