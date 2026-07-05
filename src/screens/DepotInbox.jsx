@@ -30,7 +30,7 @@ function DepotInbox({depotId,isMobile,onViewOrder}) {
 
   const orders=depotOrders[depotId]||[];
   const pending=orders.filter(o=>o.status==="pending");
-  const active=orders.filter(o=>["confirmed","loading","in_transit"].includes(o.status));
+  const active=orders.filter(o=>["confirmed","loading","in_transit","disputed"].includes(o.status));
   const completed=orders.filter(o=>["delivered","collected"].includes(o.status)).slice(0,5);
 
   const handleConfirm=async(orderId)=>{

@@ -72,6 +72,7 @@ export function OrderInboxPanel({incoming,isMobile,depot,onViewOrder}) {
   const [panelError,setPanelError]=useState(null);
   const pending=incoming.filter(o=>o.status==="pending");
   const confirmed=incoming.filter(o=>o.status==="confirmed");
+  const ongoing=incoming.filter(o=>["confirmed","loading","in_transit","disputed"].includes(o.status));
   const newCount=pending.length;
   const handleAct=async(e,orderId,toStatus)=>{
     e.stopPropagation();
@@ -91,7 +92,7 @@ export function OrderInboxPanel({incoming,isMobile,depot,onViewOrder}) {
         <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
           <span style={{fontSize:"14px",fontWeight:800,color:T.black}}>Order Inbox</span>
           {newCount>0&&<span style={{background:T.red,color:T.white,fontSize:"10px",fontWeight:800,padding:"2px 8px",letterSpacing:"0.04em"}}>{newCount} NEW</span>}
-          {newCount===0&&confirmed.length>0&&<span style={{background:T.greenLight,color:T.greenDark,fontSize:"10px",fontWeight:800,padding:"2px 8px"}}>{confirmed.length} confirmed</span>}
+          {ongoing.length>0&&<span style={{background:T.blueLight,color:T.blue,fontSize:"10px",fontWeight:800,padding:"2px 8px"}}>{ongoing.length} ongoing</span>}
         </div>
         {newCount>0&&<span style={{fontSize:"10px",color:"#8A5C00",fontWeight:700,background:T.amberLight,padding:"3px 8px"}}>⏱ Respond before SLA expires</span>}
       </div>
@@ -141,25 +142,33 @@ export function OrderInboxPanel({incoming,isMobile,depot,onViewOrder}) {
             </div>
           );
         })}
-        {confirmed.map(o=>(
-          <div key={o.id} onClick={()=>onViewOrder&&onViewOrder(o.id)}
-            style={{border:`1px solid ${T.gray100}`,background:T.white,padding:"12px 16px",marginBottom:"8px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:"10px",flexWrap:"wrap",cursor:onViewOrder?"pointer":"default"}}
-            onMouseEnter={e=>{if(onViewOrder){e.currentTarget.style.borderColor=T.black;e.currentTarget.style.background=T.gray50;}}}
-            onMouseLeave={e=>{e.currentTarget.style.borderColor=T.gray100;e.currentTarget.style.background=T.white;}}>
-            <div>
-              <div style={{display:"flex",alignItems:"center",gap:"7px",marginBottom:"2px"}}>
-                <span style={{fontSize:"12px",fontWeight:800,color:T.black}}>{o.id}</span>
-                <Badge status="confirmed"/>
+        {/* Ongoing orders (confirmed, loading, in_transit, disputed) */}
+        {ongoing.length>0&&(
+          <div style={{marginTop:pending.length>0?"8px":"0"}}>
+            {pending.length>0&&ongoing.length>0&&(
+              <div style={{fontSize:"10px",fontWeight:800,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"8px",marginTop:"6px"}}>Ongoing ({ongoing.length})</div>
+            )}
+            {ongoing.map(o=>(
+              <div key={o.id} onClick={()=>onViewOrder&&onViewOrder(o.id)}
+                style={{border:`1px solid ${o.status==="disputed"?T.amber:T.gray100}`,background:T.white,padding:"12px 16px",marginBottom:"8px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:"10px",flexWrap:"wrap",cursor:onViewOrder?"pointer":"default"}}
+                onMouseEnter={e=>{if(onViewOrder){e.currentTarget.style.borderColor=T.black;e.currentTarget.style.background=T.gray50;}}}
+                onMouseLeave={e=>{e.currentTarget.style.borderColor=o.status==="disputed"?T.amber:T.gray100;e.currentTarget.style.background=T.white;}}>
+                <div>
+                  <div style={{display:"flex",alignItems:"center",gap:"7px",marginBottom:"2px"}}>
+                    <span style={{fontSize:"12px",fontWeight:800,color:T.black}}>{o.id}</span>
+                    <Badge status={o.status}/>
+                  </div>
+                  <div style={{fontSize:"11px",color:T.gray400}}>{o.buyer} · {o.product} · {(o.vol/1000).toFixed(0)}k L · ₦{(o.value||0).toLocaleString('en-NG')}</div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+                  <span style={{fontSize:"10px",fontWeight:700,color:T.gray400}}>{o.submitted}</span>
+                  {onViewOrder&&<span style={{fontSize:"10px",fontWeight:800,color:T.black}}>Manage →</span>}
+                </div>
               </div>
-              <div style={{fontSize:"11px",color:T.gray400}}>{o.buyer} · {o.product} · {(o.vol/1000).toFixed(0)}k L · ₦{(o.value||0).toLocaleString('en-NG')}</div>
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
-              <span style={{fontSize:"10px",fontWeight:700,color:T.gray400}}>{o.submitted}</span>
-              {onViewOrder&&<span style={{fontSize:"10px",fontWeight:800,color:T.black}}>Manage →</span>}
-            </div>
+            ))}
           </div>
-        ))}
-        {pending.length===0&&confirmed.length===0&&(
+        )}
+        {pending.length===0&&ongoing.length===0&&(
           <div style={{fontSize:"12px",color:T.gray400,padding:"12px 0",textAlign:"center"}}>No pending orders. New orders will appear here.</div>
         )}
       </div>
