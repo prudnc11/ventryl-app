@@ -458,17 +458,21 @@ export function printDeliveryReceipt(data) {
       ${notes && !shortageVol ? `<div style="margin-top:12px;"><div class="label">Notes</div><div style="font-size:11px;color:#555;margin-top:4px;">${notes}</div></div>` : ''}
     </div>
 
-    <!-- CONFIRMATION SIGNATURES -->
+    <!-- CONFIRMATION -->
     <div class="grid2" style="margin-top:28px;gap:32px;">
       <div>
         <h2>Delivered By</h2>
-        <div class="sig-box"></div>
-        <div style="font-size:10px;color:#888;">Driver Name &middot; Signature &middot; Date &middot; Time</div>
+        ${trucks.length > 0
+          ? trucks.map((t, i) => `<div style="font-size:13px;font-weight:700;color:#111;margin-top:6px;">${t.driver || '\u2014'}</div>
+              <div style="font-size:10px;color:#888;">Truck ${i + 1}: ${t.plate || '\u2014'}</div>`).join('')
+          : '<div style="font-size:13px;font-weight:700;color:#111;margin-top:6px;">\u2014</div>'}
       </div>
       <div>
         <h2>Received & Inspected By</h2>
-        <div class="sig-box"></div>
-        <div style="font-size:10px;color:#888;">${confirmedBy || 'Buyer'} &middot; Signature &middot; Date &middot; Time</div>
+        <div style="font-size:13px;font-weight:700;color:#111;margin-top:6px;">${confirmedBy || '\u2014'}</div>
+        ${confirmedAt
+          ? '<div style="margin-top:8px;"><span class="badge badge-green">CONFIRMED</span></div><div style="font-size:10px;color:#888;margin-top:4px;">Confirmed: ' + confirmedAt + '</div>'
+          : '<div style="font-size:10px;color:#888;margin-top:4px;">Pending confirmation</div>'}
       </div>
     </div>
 
