@@ -313,12 +313,19 @@ export const useVentrylStore = create((set, get) => ({
   // ── Buyer orders ────────────────────────────────────────────────────────────
   buyerOrders: [],
   buyerOrdersLoaded: false,
+  buyerOrdersHasMore: true,
 
-  async loadBuyerOrders(userId) {
+  async loadBuyerOrders(userId, { loadMore = false } = {}) {
     if (!userId) return;
     try {
-      const rows = await ordersApi.listByBuyer(userId);
-      set({ buyerOrders: rows.map(adaptOrder), buyerOrdersLoaded: true });
+      const current = loadMore ? get().buyerOrders : [];
+      const rows = await ordersApi.listByBuyer(userId, { limit: 50, offset: current.length });
+      const adapted = rows.map(adaptOrder);
+      set({
+        buyerOrders: loadMore ? [...current, ...adapted] : adapted,
+        buyerOrdersLoaded: true,
+        buyerOrdersHasMore: rows.length === 50,
+      });
     } catch (e) {
       console.error('[ventrylStore] loadBuyerOrders', e.message);
     }
@@ -326,13 +333,17 @@ export const useVentrylStore = create((set, get) => ({
 
   // ── Depot orders (inbox per depot) ──────────────────────────────────────────
   depotOrders: {},   // depotId → incoming[]
+  depotOrdersHasMore: {},
 
-  async loadDepotOrders(depotId) {
+  async loadDepotOrders(depotId, { loadMore = false } = {}) {
     if (!depotId) return;
     try {
-      const rows = await ordersApi.listByDepot(depotId);
+      const current = loadMore ? (get().depotOrders[depotId] || []) : [];
+      const rows = await ordersApi.listByDepot(depotId, { limit: 50, offset: current.length });
+      const adapted = rows.map(adaptIncoming);
       set(s => ({
-        depotOrders: { ...s.depotOrders, [depotId]: rows.map(adaptIncoming) },
+        depotOrders: { ...s.depotOrders, [depotId]: loadMore ? [...current, ...adapted] : adapted },
+        depotOrdersHasMore: { ...s.depotOrdersHasMore, [depotId]: rows.length === 50 },
       }));
     } catch (e) {
       console.error('[ventrylStore] loadDepotOrders', e.message);

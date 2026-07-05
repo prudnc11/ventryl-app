@@ -1,11 +1,13 @@
 import { useNavigate } from "react-router-dom";
 import { T, F } from "../lib/tokens";
+import { useAuthStore } from "../store/authStore";
 import { useVentrylStore } from "../store/ventrylStore";
 import { Badge, Card } from "../components/shared";
 
 export function OrdersListView({ isMobile }) {
   const navigate = useNavigate();
-  const { buyerOrders } = useVentrylStore();
+  const { user: authUser } = useAuthStore();
+  const { buyerOrders, buyerOrdersHasMore, loadBuyerOrders } = useVentrylStore();
 
   return (
     <div>
@@ -68,6 +70,14 @@ export function OrdersListView({ isMobile }) {
             </tbody>
           </table>
         </Card>
+      )}
+      {buyerOrdersHasMore && buyerOrders.length > 0 && (
+        <div style={{ textAlign: "center", marginTop: "16px" }}>
+          <button onClick={() => authUser?.id && loadBuyerOrders(authUser.id, { loadMore: true })}
+            style={{ background: T.white, color: T.black, border: `1px solid ${T.gray200}`, padding: "10px 24px", fontSize: "12px", fontWeight: 700, cursor: "pointer", fontFamily: F }}>
+            Load More Orders
+          </button>
+        </div>
       )}
     </div>
   );

@@ -3,6 +3,7 @@
  * All data operations go through this module. Abstracts Supabase calls.
  */
 import { supabase } from './supabase';
+import { compressImage } from './imageCompress';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -292,8 +293,8 @@ export const orders = {
     return orderId;
   },
 
-  /** Get all orders for a buyer */
-  async listByBuyer(buyerId) {
+  /** Get orders for a buyer (paginated, default 50) */
+  async listByBuyer(buyerId, { limit = 50, offset = 0 } = {}) {
     const { data, error } = await supabase
       .from('orders')
       .select(`
@@ -304,13 +305,14 @@ export const orders = {
         delivery_negotiations (status)
       `)
       .eq('buyer_id', buyerId)
-      .order('placed_at', { ascending: false });
+      .order('placed_at', { ascending: false })
+      .range(offset, offset + limit - 1);
     assertOk(error, 'orders.listByBuyer');
     return data;
   },
 
-  /** Get all orders for a depot (inbox) */
-  async listByDepot(depotId) {
+  /** Get orders for a depot (paginated, default 50) */
+  async listByDepot(depotId, { limit = 50, offset = 0 } = {}) {
     const { data, error } = await supabase
       .from('orders')
       .select(`
@@ -319,7 +321,8 @@ export const orders = {
         profiles!orders_buyer_id_fkey (full_name, company_name, phone, state, lga, cac_number)
       `)
       .eq('depot_id', depotId)
-      .order('placed_at', { ascending: false });
+      .order('placed_at', { ascending: false })
+      .range(offset, offset + limit - 1);
     assertOk(error, 'orders.listByDepot');
     return data;
   },
@@ -611,12 +614,13 @@ export function assertValidTransition(from, to) {
 export const kyc = {
   /** Upload one KYC document to Supabase Storage and record it in kyc_documents. */
   async uploadDocument(userId, type, file) {
-    const ext = file.name.split('.').pop().toLowerCase();
+    const compressed = await compressImage(file);
+    const ext = compressed.name.split('.').pop().toLowerCase();
     const path = `${userId}/${type}-${Date.now()}.${ext}`;
 
     const { error: upErr } = await supabase.storage
       .from('kyc-documents')
-      .upload(path, file, { upsert: true, contentType: file.type });
+      .upload(path, compressed, { upsert: true, contentType: compressed.type });
     assertOk(upErr, 'kyc.uploadDocument:storage');
 
     const { error: dbErr } = await supabase
@@ -668,12 +672,13 @@ export const kyc = {
 export const kyb = {
   /** Upload one KYB document to Supabase Storage and record it in kyb_documents. */
   async uploadDocument(depotId, userId, type, file) {
-    const ext = file.name.split('.').pop().toLowerCase();
+    const compressed = await compressImage(file);
+    const ext = compressed.name.split('.').pop().toLowerCase();
     const path = `${userId}/${depotId}/${type}-${Date.now()}.${ext}`;
 
     const { error: upErr } = await supabase.storage
       .from('kyb-documents')
-      .upload(path, file, { upsert: true, contentType: file.type });
+      .upload(path, compressed, { upsert: true, contentType: compressed.type });
     assertOk(upErr, 'kyb.uploadDocument:storage');
 
     const { error: dbErr } = await supabase
