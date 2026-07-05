@@ -1,10 +1,23 @@
+import { useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { T, F } from "../../lib/tokens";
 import { Icon } from "../../components/shared";
+import { useVentrylStore } from "../../store/ventrylStore";
 
 export function PlatformSidebar({ depots, onNewDepot, onPlaceOrder, identity, isMobile, onSignOut, isAdmin }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const { depotOrders, loadDepotOrders } = useVentrylStore();
+
+  // Load orders for all depots so badges are available
+  useEffect(() => {
+    depots.forEach(d => { if (d.kyb === "verified" && !depotOrders[d.id]) loadDepotOrders(d.id); });
+  }, [depots]);
+
+  const getOngoingCount = (depotId) => {
+    const orders = depotOrders[depotId] || [];
+    return orders.filter(o => ["pending", "confirmed", "loading", "in_transit", "disputed"].includes(o.status)).length;
+  };
 
   const ITEMS = [
     { path: "/",            label: "Dashboard",      icon: "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" },
@@ -85,12 +98,16 @@ export function PlatformSidebar({ depots, onNewDepot, onPlaceOrder, identity, is
         </div>
         {depots.map(d => {
           const active = pathname === `/depot/${d.id}`;
+          const ongoing = getOngoingCount(d.id);
+          const pending = (depotOrders[d.id] || []).filter(o => o.status === "pending").length;
           return (
             <button key={d.id} onClick={() => navigate(`/depot/${d.id}`)}
               style={{ width: "100%", display: "flex", alignItems: "center", gap: "9px", padding: "9px 12px", borderRadius: "5px", background: active ? T.white : "transparent", color: active ? T.black : "#888", border: "none", cursor: "pointer", marginBottom: "2px", fontFamily: F, fontSize: "12px", fontWeight: active ? 800 : 600, textAlign: "left", transition: "all 0.1s" }}>
               <div style={{ width: "20px", height: "20px", background: active ? T.black : d.kyb === "verified" ? T.green : "#333", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "9px", fontWeight: 800, color: T.white, flexShrink: 0 }}>{d.name[0]}</div>
               <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
               {d.kyb !== "verified" && <span style={{ background: T.amberLight, color: "#8A5C00", fontSize: "8px", fontWeight: 800, padding: "1px 4px", borderRadius: "2px", flexShrink: 0 }}>KYB</span>}
+              {d.kyb === "verified" && pending > 0 && <span style={{ background: T.red, color: T.white, fontSize: "9px", fontWeight: 800, padding: "1px 5px", borderRadius: "8px", minWidth: "16px", textAlign: "center", flexShrink: 0 }}>{pending}</span>}
+              {d.kyb === "verified" && pending === 0 && ongoing > 0 && <span style={{ background: T.green, color: T.black, fontSize: "9px", fontWeight: 800, padding: "1px 5px", borderRadius: "8px", minWidth: "16px", textAlign: "center", flexShrink: 0 }}>{ongoing}</span>}
             </button>
           );
         })}
