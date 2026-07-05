@@ -10,7 +10,7 @@ import { Badge, Icon, Card, KpiCard, SectionHead, ChartTip, Sidebar, Topbar } fr
 import { _deliveryQuoteStore, _orderStatusStore, _orderBayStore, _orderTruckListStore, _orderDispatchedStore, _orderStatusLogStore, _gateRecordStore, _buyerConfirmedStore } from "../lib/sessionCache";
 import { kyc as kycApi, kyb as kybApi, notifications as notifApi, depots as depotsApi, profiles as profilesApi, orders as ordersApi, negotiations as negotiationsApi, teamMembers as teamMembersApi } from "../lib/api";
 import { supabase } from "../lib/supabase";
-import { printWaybill, printInvoice } from "../lib/documents";
+import { printWaybill, printInvoice, printDeliveryReceipt, printOrderSummary } from "../lib/documents";
 import { openPaystackPopup, verifyAndCreditWallet, FUND_PRESETS } from "../lib/payment";
 import { useOrderRealtime, useDepotInboxRealtime, useProfileRealtime } from "../lib/realtime";
 import { useDepotContext } from "../context/DepotContext";
@@ -494,6 +494,51 @@ function BuyerOrderDetail({isMobile}) {
               })}
               style={{background:T.black,color:T.white,border:"none",padding:"7px 14px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"36px"}}>
               ⬇ Invoice
+            </button>
+          )}
+
+          {/* Delivery Receipt — after delivery confirmed */}
+          {deliveryConfirmed&&(
+            <button
+              onClick={()=>printDeliveryReceipt({
+                orderId,
+                product,
+                vol,
+                buyer:order?.buyer||"",
+                buyerAddr:order?._raw?.profiles?.state?`${order._raw.profiles.state}, Nigeria`:"Nigeria",
+                depot:order?.depot||meta?.depot||"",
+                depotAddr:order?._raw?.depots?.state?`${order._raw.depots.state}, Nigeria`:"Nigeria",
+                trucks:liveTrucks.filter(t=>t.plate),
+                deliveredAt:meta?.dispatched_at?new Date(meta.dispatched_at).toLocaleDateString('en-NG',{day:'2-digit',month:'long',year:'numeric'}):"",
+                confirmedAt:new Date().toLocaleDateString('en-NG',{day:'2-digit',month:'long',year:'numeric'}),
+                confirmedBy:order?.buyer||"Buyer",
+                condition:"good",
+              })}
+              style={{background:T.white,color:T.black,border:`1px solid ${T.green}`,padding:"7px 14px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"36px"}}>
+              ⬇ Delivery Receipt
+            </button>
+          )}
+
+          {/* Order Summary — always available */}
+          {order&&(
+            <button
+              onClick={()=>printOrderSummary({
+                orderId,
+                product,
+                vol,
+                pricePerLitre:order?.pricePerLitre||meta?.price_per_litre||0,
+                buyer:order?.buyer||"",
+                buyerAddr:order?._raw?.profiles?.state?`${order._raw.profiles.state}, Nigeria`:"Nigeria",
+                depot:order?.depot||meta?.depot||"",
+                depotAddr:order?._raw?.depots?.state?`${order._raw.depots.state}, Nigeria`:"Nigeria",
+                depotLicense:meta?.license||"",
+                status:liveStatus,
+                placedAt:order?.created_at?new Date(order.created_at).toLocaleDateString('en-NG',{day:'2-digit',month:'long',year:'numeric'}):"",
+                type:meta?.delivery_type||"delivery",
+                vat:true,
+              })}
+              style={{background:"transparent",color:T.black,border:`1px solid ${T.gray200}`,padding:"7px 14px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"36px"}}>
+              ⬇ Order Summary
             </button>
           )}
         </div>

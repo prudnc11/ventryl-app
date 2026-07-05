@@ -10,7 +10,7 @@ import { Badge, Icon, Card, KpiCard, SectionHead, ChartTip, Sidebar, Topbar } fr
 import { _deliveryQuoteStore, _orderStatusStore, _orderBayStore, _orderTruckListStore, _orderDispatchedStore, _orderStatusLogStore, _gateRecordStore, _buyerConfirmedStore } from "../lib/sessionCache";
 import { kyc as kycApi, kyb as kybApi, notifications as notifApi, depots as depotsApi, profiles as profilesApi, orders as ordersApi, negotiations as negotiationsApi, teamMembers as teamMembersApi } from "../lib/api";
 import { supabase } from "../lib/supabase";
-import { printWaybill, printInvoice } from "../lib/documents";
+import { printTransactionReceipt } from "../lib/documents";
 import { openPaystackPopup, verifyAndCreditWallet, FUND_PRESETS } from "../lib/payment";
 import { useOrderRealtime, useDepotInboxRealtime, useProfileRealtime } from "../lib/realtime";
 import { useDepotContext } from "../context/DepotContext";
@@ -143,7 +143,22 @@ function BuyerWallet({isMobile}) {
                 <div style={{fontSize:"10px",color:T.gray400,marginTop:"1px"}}>{t.id} · {t.date}</div>
               </div>
             </div>
-            <div style={{fontSize:"13px",fontWeight:800,color:t.type==="credit"?T.greenDark:t.type==="paid"?T.blue:T.black,flexShrink:0}}>{t.amount}</div>
+            <div style={{display:"flex",alignItems:"center",gap:"8px",flexShrink:0}}>
+              <div style={{fontSize:"13px",fontWeight:800,color:t.type==="credit"?T.greenDark:t.type==="paid"?T.blue:T.black}}>{t.amount}</div>
+              <button onClick={()=>printTransactionReceipt({
+                txnId:t.id,
+                type:t.type==="credit"?"topup":t.type==="paid"?"debit":"debit",
+                amount:parseFloat(String(t.amount).replace(/[^0-9.]/g,''))||0,
+                currency,
+                description:t.desc,
+                date:t.date,
+                userName:authProfile?.full_name||authProfile?.company_name||"",
+                userCompany:authProfile?.company_name||"",
+              })} title="Print receipt"
+                style={{background:"none",border:"none",cursor:"pointer",padding:"4px",color:T.gray400,fontSize:"14px",lineHeight:1}}>
+                🖨
+              </button>
+            </div>
           </div>
         ))}
       </Card>

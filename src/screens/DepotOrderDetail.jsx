@@ -10,7 +10,7 @@ import { Badge, Icon, Card, KpiCard, SectionHead, ChartTip, Sidebar, Topbar } fr
 import { _deliveryQuoteStore, _orderStatusStore, _orderBayStore, _orderTruckListStore, _orderDispatchedStore, _orderStatusLogStore, _gateRecordStore, _buyerConfirmedStore } from "../lib/sessionCache";
 import { kyc as kycApi, kyb as kybApi, notifications as notifApi, depots as depotsApi, profiles as profilesApi, orders as ordersApi, negotiations as negotiationsApi, teamMembers as teamMembersApi } from "../lib/api";
 import { supabase } from "../lib/supabase";
-import { printWaybill, printInvoice } from "../lib/documents";
+import { printWaybill, printInvoice, printDeliveryReceipt } from "../lib/documents";
 import { openPaystackPopup, verifyAndCreditWallet, FUND_PRESETS } from "../lib/payment";
 import { useOrderRealtime, useDepotInboxRealtime, useProfileRealtime } from "../lib/realtime";
 import { useDepotContext } from "../context/DepotContext";
@@ -782,6 +782,26 @@ function DepotOrderDetail({isMobile}) {
               style={{background:T.white,color:T.black,border:`1px solid ${T.green}`,padding:"8px 14px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"34px",whiteSpace:"nowrap"}}>
               ⬇ Invoice
             </button>
+            {(liveStatus==="delivered"||liveStatus==="collected")&&(
+              <button
+                onClick={()=>printDeliveryReceipt({
+                  orderId,
+                  product:orderProductLabel,
+                  vol:meta.vol||raw.vol||0,
+                  buyer:raw.buyer||"Buyer",
+                  buyerAddr:"Lagos, Nigeria",
+                  depot:depot?.name||"Depot",
+                  depotAddr:depot?.location||"Lagos, Nigeria",
+                  trucks:liveTrucks.length>0?liveTrucks:buyerTrucks.filter(t=>t.plate),
+                  deliveredAt:meta?.dispatched_at?new Date(meta.dispatched_at).toLocaleDateString('en-NG',{day:'2-digit',month:'long',year:'numeric'}):"",
+                  confirmedAt:new Date().toLocaleDateString('en-NG',{day:'2-digit',month:'long',year:'numeric'}),
+                  condition:"good",
+                  waybillRef:waybillRef||"",
+                })}
+                style={{background:"transparent",color:T.black,border:`1px solid ${T.gray200}`,padding:"8px 14px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"34px",whiteSpace:"nowrap"}}>
+                ⬇ Delivery Receipt
+              </button>
+            )}
           </div>
         </div>
       )}
