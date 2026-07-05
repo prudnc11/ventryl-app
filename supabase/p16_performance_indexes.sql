@@ -26,8 +26,8 @@ CREATE INDEX IF NOT EXISTS idx_delivery_negotiations_order_id ON delivery_negoti
 CREATE INDEX IF NOT EXISTS idx_delivery_rounds_negotiation_id ON delivery_rounds (negotiation_id);
 
 -- Transactions — wallet history
-CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions (user_id);
-CREATE INDEX IF NOT EXISTS idx_transactions_user_created ON transactions (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_transactions_wallet_id ON transactions (wallet_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_wallet_created ON transactions (wallet_id, created_at DESC);
 
 -- Wallets
 CREATE INDEX IF NOT EXISTS idx_wallets_user_id ON wallets (user_id);
@@ -38,7 +38,7 @@ CREATE INDEX IF NOT EXISTS idx_profiles_kyc_status ON profiles (kyc_status);
 
 -- Depots
 CREATE INDEX IF NOT EXISTS idx_depots_owner_id ON depots (owner_id);
-CREATE INDEX IF NOT EXISTS idx_depots_kyb ON depots (kyb);
+CREATE INDEX IF NOT EXISTS idx_depots_kyb_status ON depots (kyb_status);
 
 -- Depot products
 CREATE INDEX IF NOT EXISTS idx_depot_products_depot_id ON depot_products (depot_id);
