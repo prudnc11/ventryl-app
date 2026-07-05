@@ -61,17 +61,34 @@ function BuyerWallet({isMobile}) {
 
   const CURRENCIES={
     NGN:{symbol:"₦",label:"Nigerian Naira",balance:walletNGN?.balanceNGN??0,fmt:(n)=>`₦${n.toLocaleString('en-NG')}`,rate:null,flag:"🇳🇬",
-      txn:walletNGN?.txn??[],},
+      txn:walletNGN?.txn??[],enabled:true},
+    USD:{symbol:"$",label:"US Dollar",balance:0,fmt:(n)=>`$${n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`,rate:"1 USD = ₦1,638",flag:"🇺🇸",
+      txn:[],enabled:false},
+    USDT:{symbol:"",label:"Tether (USDT)",balance:0,fmt:(n)=>`${n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})} USDT`,rate:"1 USDT ≈ $1.00",flag:"₮",
+      txn:[],enabled:false},
   };
 
   const cur=CURRENCIES[currency];
-  const TABS=["NGN"];
+  const TABS=["NGN","USD","USDT"];
 
   return (
     <div>
       {/* Hero header */}
       <div style={{background:T.black,padding:isMobile?"18px 16px":"24px 28px",marginBottom:"14px"}}>
-        <div style={{marginBottom:"20px"}}></div>
+        {/* Currency tabs */}
+        <div style={{display:"flex",gap:"0",marginBottom:"20px",borderBottom:"1px solid #222"}}>
+          {TABS.map(tab=>{
+            const enabled=CURRENCIES[tab].enabled;
+            const active=currency===tab;
+            return (
+              <button key={tab} onClick={()=>{if(enabled)setCurrency(tab);}}
+                style={{padding:"8px 16px",background:"none",border:"none",cursor:enabled?"pointer":"default",fontFamily:F,fontSize:"12px",fontWeight:active?800:600,color:active?T.white:enabled?"#666":"#333",borderBottom:`2px solid ${active?T.green:"transparent"}`,marginBottom:"-1px",transition:"all 0.15s",opacity:enabled?1:0.5,position:"relative"}}>
+                {CURRENCIES[tab].flag} {tab}
+                {!enabled&&<span style={{fontSize:"8px",fontWeight:700,color:"#555",marginLeft:"4px",textTransform:"uppercase",letterSpacing:"0.05em"}}>Soon</span>}
+              </button>
+            );
+          })}
+        </div>
 
         <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:"24px"}}>
           <div>
@@ -97,6 +114,25 @@ function BuyerWallet({isMobile}) {
         </div>
       </div>
 
+      {/* Balances across currencies */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"1px",background:T.gray100,border:`1px solid ${T.gray100}`,marginBottom:"14px"}}>
+        {TABS.map(tab=>{
+          const enabled=CURRENCIES[tab].enabled;
+          const active=currency===tab;
+          return (
+            <div key={tab} onClick={()=>{if(enabled)setCurrency(tab);}}
+              style={{background:active?T.black:T.white,padding:"16px 18px",cursor:enabled?"pointer":"default",transition:"background 0.15s",position:"relative",opacity:enabled?1:0.6}}>
+              <div style={{fontSize:"10px",fontWeight:700,color:active?T.gray400:"#8C8C8C",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:"4px"}}>{CURRENCIES[tab].flag} {tab}</div>
+              {enabled?(
+                <div style={{fontSize:"16px",fontWeight:800,color:active?T.green:T.black,lineHeight:1}}>{CURRENCIES[tab].fmt(CURRENCIES[tab].balance)}</div>
+              ):(
+                <div style={{fontSize:"12px",fontWeight:700,color:"#aaa",lineHeight:1}}>Coming Soon</div>
+              )}
+              {CURRENCIES[tab].rate&&enabled&&<div style={{fontSize:"9px",color:active?"#666":T.gray400,marginTop:"3px"}}>{CURRENCIES[tab].rate}</div>}
+            </div>
+          );
+        })}
+      </div>
 
       {/* Transaction history */}
       <Card pad={false}>
