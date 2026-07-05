@@ -766,24 +766,29 @@ function DepotOrderDetail({isMobile}) {
               ⬇ Waybill
             </button>
             <button
-              onClick={()=>printInvoice({
-                orderId,
-                product:orderProductLabel,
-                vol:meta.vol||raw.vol||0,
-                pricePerLitre:meta?.pricePerLitre||finials.price_per_litre||0,
-                items:isMultiDepot?meta.products.map(p=>({product:p.name,vol:p.vol,pricePerLitre:p.pricePerLitre||0})):null,
-                buyer:buyerInfo.company||raw.buyer||"Buyer",
-                buyerAddr:buyerInfo.location||"Lagos, Nigeria",
-                buyerRc:buyerInfo.rc||"",
-                depot:depot?.name||"Depot",
-                depotAddr:depot?.location||"Lagos, Nigeria",
-                depotRc:depot?.rc||"",
-                depotLicense:depot?.license||"",
-                vat:true,
-                platformFee:finials.platformFee||0,
-                deliveryFee:liveQuoteStatus==="agreed"?liveQuoteRounds[liveQuoteRounds.length-1]?.amount||0:0,
-                status:finials.paymentStatus||"",
-              })}
+              onClick={()=>{
+                const v=meta.vol||raw.vol||0;
+                const ppl=meta?.pricePerLitre||(v>0&&finials.productValue?Math.round(finials.productValue/v):0);
+                const invoiceItems=isMultiDepot&&meta.products?meta.products.map(p=>({product:p.name,vol:p.vol,pricePerLitre:p.pricePerLitre||(p.value&&p.vol?Math.round(p.value/p.vol):ppl)})):null;
+                printInvoice({
+                  orderId,
+                  product:orderProductLabel,
+                  vol:v,
+                  pricePerLitre:ppl,
+                  items:invoiceItems,
+                  buyer:buyerInfo.company||raw.buyer||"Buyer",
+                  buyerAddr:buyerInfo.location||"Lagos, Nigeria",
+                  buyerRc:buyerInfo.rc||"",
+                  depot:depot?.name||"Depot",
+                  depotAddr:depot?.location||"Lagos, Nigeria",
+                  depotRc:depot?.rc||"",
+                  depotLicense:depot?.license||"",
+                  vat:true,
+                  platformFee:finials.platformFee||0,
+                  deliveryFee:liveQuoteStatus==="agreed"?liveQuoteRounds[liveQuoteRounds.length-1]?.amount||0:0,
+                  status:finials.paymentStatus||"",
+                });
+              }}
               style={{background:T.white,color:T.black,border:`1px solid ${T.green}`,padding:"8px 14px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"34px",whiteSpace:"nowrap"}}>
               ⬇ Invoice
             </button>

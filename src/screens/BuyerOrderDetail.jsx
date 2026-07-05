@@ -479,24 +479,28 @@ function BuyerOrderDetail({isMobile}) {
           {/* Invoice — only after confirmed */}
           {deliveryConfirmed&&(
             <button
-              onClick={()=>printInvoice({
-                orderId,
-                product,
-                vol,
-                pricePerLitre:meta?.pricePerLitre||finials.price_per_litre||order?.pricePerLitre||0,
-                items:isMulti?meta.products.map(p=>({product:p.name,vol:p.vol,pricePerLitre:p.pricePerLitre||0})):null,
-                buyer:buyerInfo.company||order?.buyer||"",
-                buyerAddr:buyerInfo.location||"Lagos, Nigeria",
-                buyerRc:buyerInfo.rc||"",
-                depot:depotInfo.name||order?.depot||"",
-                depotAddr:depotInfo.location||"Nigeria",
-                depotLicense:meta?.license||"",
-                date:new Date().toLocaleDateString('en-NG',{day:'2-digit',month:'long',year:'numeric'}),
-                vat:true,
-                platformFee:finials.platformFee||0,
-                deliveryFee:quoteStatus==="agreed"?quoteRounds[quoteRounds.length-1]?.amount||0:0,
-                status:finials.paymentStatus||"",
-              })}
+              onClick={()=>{
+                const ppl=meta?.pricePerLitre||order?.pricePerLitre||(vol>0&&finials.productValue?Math.round(finials.productValue/vol):0);
+                const invoiceItems=isMulti&&meta.products?meta.products.map(p=>({product:p.name,vol:p.vol,pricePerLitre:p.pricePerLitre||(p.value&&p.vol?Math.round(p.value/p.vol):ppl)})):null;
+                printInvoice({
+                  orderId,
+                  product,
+                  vol,
+                  pricePerLitre:ppl,
+                  items:invoiceItems,
+                  buyer:buyerInfo.company||order?.buyer||"",
+                  buyerAddr:buyerInfo.location||"Lagos, Nigeria",
+                  buyerRc:buyerInfo.rc||"",
+                  depot:depotInfo.name||order?.depot||"",
+                  depotAddr:depotInfo.location||"Nigeria",
+                  depotLicense:meta?.license||"",
+                  date:new Date().toLocaleDateString('en-NG',{day:'2-digit',month:'long',year:'numeric'}),
+                  vat:true,
+                  platformFee:finials.platformFee||0,
+                  deliveryFee:quoteStatus==="agreed"?quoteRounds[quoteRounds.length-1]?.amount||0:0,
+                  status:finials.paymentStatus||"",
+                });
+              }}
               style={{background:T.black,color:T.white,border:"none",padding:"7px 14px",fontSize:"11px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"36px"}}>
               ⬇ Invoice
             </button>
@@ -531,7 +535,7 @@ function BuyerOrderDetail({isMobile}) {
                 orderId,
                 product,
                 vol,
-                pricePerLitre:meta?.pricePerLitre||finials.price_per_litre||order?.pricePerLitre||0,
+                pricePerLitre:meta?.pricePerLitre||order?.pricePerLitre||(vol>0&&finials.productValue?Math.round(finials.productValue/vol):0),
                 buyer:buyerInfo.company||order?.buyer||"",
                 buyerAddr:buyerInfo.location||"Lagos, Nigeria",
                 buyerRc:buyerInfo.rc||"",
