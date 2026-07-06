@@ -407,4 +407,17 @@ export const useVentrylStore = create((set, get) => ({
       return { orderDetails: next };
     });
   },
+
+  // Reset all store data (call on sign-out to prevent data leaks between accounts)
+  reset() {
+    set({
+      marketDepots: [], marketDepotsLoaded: false,
+      ownerDepots: [], ownerDepotsLoaded: false,
+      buyerOrders: [], buyerOrdersLoaded: false, buyerOrdersHasMore: true,
+      depotOrders: {}, depotOrdersHasMore: {},
+      priceHistory: [],
+      walletNGN: null,
+      orderDetails: {},
+    });
+  },
 }));

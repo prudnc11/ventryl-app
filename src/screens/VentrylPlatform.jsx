@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense, Component } from "react";
-import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { T, F, GLOBAL_STYLES } from "../lib/tokens";
 import { useAuthStore } from "../store/authStore";
 import { useVentrylStore } from "../store/ventrylStore";
@@ -79,7 +79,7 @@ export function VentrylPlatform({ bp, user, onSignOut }) {
   const [showKycGate, setShowKycGate] = useState(false);
   const [kycGateAction, setKycGateAction] = useState(""); // "order" | "depot"
 
-  const kycApproved = authProfile?.kyc_status === "submitted" || authProfile?.kyc_status === "verified" || authProfile?.kyc_status === "approved";
+  const kycApproved = authProfile?.kyc_status === "verified" || authProfile?.kyc_status === "approved";
 
   const requireKyc = (action, cb) => {
     if (!kycApproved) { setKycGateAction(action); setShowKycGate(true); return; }
@@ -234,9 +234,9 @@ export function VentrylPlatform({ bp, user, onSignOut }) {
                   <Route path="orders" element={<OrdersListView isMobile={isMobile} />} />
                   <Route path="orders/:id" element={<BuyerOrderDetail isMobile={isMobile} />} />
                   <Route path="wallet" element={<BuyerWallet isMobile={isMobile} />} />
-                  <Route path="place-order" element={<OrderFlow onDone={() => navigate("/")} isMobile={isMobile} />} />
+                  <Route path="place-order" element={kycApproved ? <OrderFlow onDone={() => navigate("/")} isMobile={isMobile} /> : <Navigate to="/settings" replace />} />
                   <Route path="settings" element={<SettingsModule portalType="buyer" isMobile={isMobile} />} />
-                  <Route path="depot/new" element={<CreateDepotFlow onCreateDepot={handleCreateDepot} onDone={id => navigate(id ? `/depot/${id}` : "/")} onCancel={() => navigate(-1)} isMobile={isMobile} />} />
+                  <Route path="depot/new" element={kycApproved ? <CreateDepotFlow onCreateDepot={handleCreateDepot} onDone={id => navigate(id ? `/depot/${id}` : "/")} onCancel={() => navigate(-1)} isMobile={isMobile} /> : <Navigate to="/settings" replace />} />
                   <Route path="depot/:id" element={<DepotDetailView onViewOrder={(orderId, depotId) => navigate(`/depot/${depotId}/order/${orderId}`)} isMobile={isMobile} />} />
                   <Route path="depot/:depotId/order/:orderId" element={<DepotOrderDetail isMobile={isMobile} />} />
                   {isAdmin && <Route path="admin" element={<AdminPanel isMobile={isMobile} />} />}

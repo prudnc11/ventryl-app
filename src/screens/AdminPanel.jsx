@@ -167,7 +167,7 @@ function FilterBar({ filters, active, counts, onChange }) {
 }
 
 // ── KYC Review Tab ─────────────────────────────────────────────────────────────
-function KycReview({ isMobile }) {
+function KycReview({ isMobile, adminUserId }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -255,7 +255,7 @@ function KycReview({ isMobile }) {
         </div>
       )}
       {visible.map(u => {
-        const canAct = u.kyc_status === 'submitted' || u.kyc_status === 'pending';
+        const canAct = u.kyc_status === 'submitted' && u.id !== adminUserId;
         return (
           <div key={u.id} style={{ border: `1px solid ${u.kyc_status === 'verified' ? T.green + '40' : u.kyc_status === 'rejected' ? T.red + '30' : T.gray100}`, background: T.white, marginBottom: '10px', padding: '16px 18px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
@@ -309,7 +309,7 @@ function KycReview({ isMobile }) {
 }
 
 // ── KYB Review Tab ─────────────────────────────────────────────────────────────
-function KybReview({ isMobile }) {
+function KybReview({ isMobile, adminUserId }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -402,7 +402,7 @@ function KybReview({ isMobile }) {
         </div>
       )}
       {visible.map(d => {
-        const canAct = d.kyb_status === 'submitted' || d.kyb_status === 'pending';
+        const canAct = d.kyb_status === 'submitted' && d.owner_id !== adminUserId;
         return (
           <div key={d.id} style={{ border: `1px solid ${d.kyb_status === 'verified' ? T.green + '40' : d.kyb_status === 'rejected' ? T.red + '30' : T.gray100}`, background: T.white, marginBottom: '10px', padding: '16px 18px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
@@ -563,7 +563,6 @@ function PricingEngine({ isMobile }) {
   const [feeInput, setFeeInput] = useState('');
   const [feeStep, setFeeStep] = useState('idle'); // idle | confirm | otp | saving | done
   const [otp, setOtp] = useState('');
-  const [generatedOtp, setGeneratedOtp] = useState('');
   const [otpErr, setOtpErr] = useState('');
   const [feeLog, setFeeLog] = useState([]);
   const otpSentTo = useRef('');
@@ -623,41 +622,54 @@ function PricingEngine({ isMobile }) {
     return ((curr - prev) / prev * 100).toFixed(1);
   };
 
-  // Fee change flow: Step 1 → confirm, Step 2 → generate & send OTP, Step 3 → verify & save
+  // Fee change flow: Step 1 → confirm, Step 2 → generate & send OTP (server-side), Step 3 → verify & save
   const handleFeeConfirm = async () => {
     const val = parseFloat(feeInput);
     if (isNaN(val) || val < 0 || val > 50) { setOtpErr('Fee must be between 0% and 50%'); return; }
     if (val === currentFee) { setOtpErr('No change detected'); return; }
     setOtpErr('');
-    // Generate 6-digit OTP
-    const code = String(Math.floor(100000 + Math.random() * 900000));
-    setGeneratedOtp(code);
-    // Get admin email
+    // Get admin session
     const { data: { session } } = await sb.auth.getSession();
     const email = session?.user?.email || '';
+    const adminId = session?.user?.id;
     otpSentTo.current = email;
-    // Send OTP via email using Edge Function
+    // Generate OTP server-side via Edge Function
     try {
-      await notifications.send({
-        userId: session?.user?.id,
-        type: 'admin_otp',
-        channel: 'email',
-        toEmail: email,
-        data: { code, action: `Platform fee change: ${currentFee}% → ${feeInput}%` },
+      const { data: result, error } = await sb.functions.invoke('admin-otp', {
+        body: {
+          action: 'generate',
+          admin_id: adminId,
+          email,
+          context: `Platform fee change: ${currentFee}% → ${feeInput}%`,
+        },
       });
+      if (error) { setOtpErr('Failed to send OTP. Try again.'); return; }
     } catch (e) {
-      console.warn('[OTP] Edge Function unavailable, showing fallback:', e.message);
+      setOtpErr('OTP service unavailable. Try again.');
+      return;
     }
     setFeeStep('otp');
   };
 
   const handleOtpVerify = async () => {
-    if (otp !== generatedOtp) { setOtpErr('Invalid OTP code. Please try again.'); return; }
-    setFeeStep('saving');
     setOtpErr('');
-    const val = parseFloat(feeInput);
     const { data: { session } } = await sb.auth.getSession();
     const userId = session?.user?.id;
+
+    // Verify OTP server-side
+    const { data: result, error: verifyErr } = await sb.functions.invoke('admin-otp', {
+      body: { action: 'verify', admin_id: userId, code: otp },
+    });
+    if (verifyErr || !result?.valid) {
+      setOtpErr(result?.error || 'Invalid OTP code. Please try again.');
+      return;
+    }
+
+    // Re-validate fee value to prevent tampering between confirm and OTP steps
+    const val = parseFloat(feeInput);
+    if (isNaN(val) || val < 0 || val > 50) { setOtpErr('Invalid fee value.'); return; }
+
+    setFeeStep('saving');
 
     // Log the change
     await sb.from('platform_settings_log').insert({
@@ -1309,11 +1321,13 @@ export function AdminPanel({ isMobile }) {
 
   // Double-check admin status server-side
   const [confirmed, setConfirmed] = useState(null);
+  const [adminUserId, setAdminUserId] = useState(null);
   useEffect(() => {
     (async () => {
       const { data: { user } } = await sb.auth.getUser();
       const { data } = await sb.from('profiles').select('is_admin').eq('id', user?.id ?? '').maybeSingle();
       setConfirmed(!!data?.is_admin);
+      if (data?.is_admin) setAdminUserId(user?.id);
     })();
   }, []);
   if (confirmed === false) return (
@@ -1337,8 +1351,8 @@ export function AdminPanel({ isMobile }) {
 
   const CONTENT = {
     overview: <Overview isMobile={isMobile} />,
-    kyc:      <KycReview isMobile={isMobile} />,
-    kyb:      <KybReview isMobile={isMobile} />,
+    kyc:      <KycReview isMobile={isMobile} adminUserId={adminUserId} />,
+    kyb:      <KybReview isMobile={isMobile} adminUserId={adminUserId} />,
     orders:   <AllOrders isMobile={isMobile} />,
     disputes: <DisputesReview isMobile={isMobile} />,
     pricing:  <PricingEngine isMobile={isMobile} />,

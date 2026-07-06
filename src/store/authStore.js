@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase, isConfigured } from '../lib/supabase';
+import { useVentrylStore } from './ventrylStore';
 
 async function fetchProfile(userId) {
   const { data } = await supabase
@@ -57,5 +58,6 @@ export const useAuthStore = create((set, get) => ({
   signOut: async () => {
     await supabase.auth.signOut();
     set({ session: null, user: null, profile: null });
+    useVentrylStore.getState().reset();
   },
 }));
