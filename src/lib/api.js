@@ -246,6 +246,16 @@ export const orders = {
     const vat = Math.round(totalValue * vatRate);
     const netToDepot = totalValue - platformFee;
     const trucksCount = Math.ceil(totalVolume / 33000);
+    const escrowTotal = totalValue + platformFee + vat;
+
+    // C2 FIX: Hold funds FIRST (atomically) before inserting order
+    const { data: held, error: holdErr } = await supabase.rpc('wallet_hold', {
+      p_user_id: buyerId,
+      p_amount: escrowTotal,
+      p_order_id: '__pending__', // placeholder — updated after order insert
+    });
+    if (holdErr) assertOk(holdErr, 'orders.create:hold');
+    if (!held) throw new Error('Insufficient wallet balance to place this order.');
 
     // Generate order ID from DB sequence; fall back to timestamp-based ID if not available
     const { data: idRow } = await supabase.rpc('next_order_id');
@@ -253,47 +263,61 @@ export const orders = {
 
     const slaDeadline = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(); // 2h SLA
 
-    const { error: orderErr } = await supabase.from('orders').insert({
-      id: orderId,
-      buyer_id: buyerId,
-      depot_id: depotId,
-      status: 'pending',
-      delivery_mode: deliveryMode,
-      delivery_state: deliveryState || null,
-      delivery_lga: deliveryLga || null,
-      delivery_address: deliveryAddress || null,
-      pickup_note: pickupNote || null,
-      total_volume: totalVolume,
-      total_value: totalValue,
-      platform_fee: platformFee,
-      vat,
-      net_to_depot: netToDepot,
-      trucks_count: trucksCount,
-      sla_deadline: slaDeadline,
-    });
-    assertOk(orderErr, 'orders.create:order');
+    try {
+      const { error: orderErr } = await supabase.from('orders').insert({
+        id: orderId,
+        buyer_id: buyerId,
+        depot_id: depotId,
+        status: 'pending',
+        delivery_mode: deliveryMode,
+        delivery_state: deliveryState || null,
+        delivery_lga: deliveryLga || null,
+        delivery_address: deliveryAddress || null,
+        pickup_note: pickupNote || null,
+        total_volume: totalVolume,
+        total_value: totalValue,
+        platform_fee: platformFee,
+        vat,
+        net_to_depot: netToDepot,
+        trucks_count: trucksCount,
+        sla_deadline: slaDeadline,
+      });
+      assertOk(orderErr, 'orders.create:order');
 
-    const itemRows = items.map((i) => ({
-      order_id: orderId,
-      product: i.product,
-      volume: i.volume,
-      price_per_litre: i.pricePerLitre,
-      value: i.pricePerLitre * i.volume,
-    }));
-    const { error: itemsErr } = await supabase.from('order_items').insert(itemRows);
-    assertOk(itemsErr, 'orders.create:items');
+      const itemRows = items.map((i) => ({
+        order_id: orderId,
+        product: i.product,
+        volume: i.volume,
+        price_per_litre: i.pricePerLitre,
+        value: i.pricePerLitre * i.volume,
+      }));
+      const { error: itemsErr } = await supabase.from('order_items').insert(itemRows);
+      assertOk(itemsErr, 'orders.create:items');
 
-    // Log initial status
-    await supabase.from('order_status_logs').insert({
-      order_id: orderId,
-      from_status: null,
-      to_status: 'pending',
-      note: 'Order placed',
-      actor_id: buyerId,
-    });
+      // Update the placeholder hold transaction with the real order ID
+      await supabase.from('transactions')
+        .update({ order_id: orderId, description: `Order ${orderId} — Payment held in escrow` })
+        .eq('order_id', '__pending__')
+        .eq('type', 'hold');
 
-    // Hold funds in wallet
-    await wallet._hold(buyerId, totalValue + platformFee + vat, orderId);
+      // Log initial status
+      await supabase.from('order_status_logs').insert({
+        order_id: orderId,
+        from_status: null,
+        to_status: 'pending',
+        note: 'Order placed',
+        actor_id: buyerId,
+      });
+    } catch (e) {
+      // Order insert failed — refund the hold
+      await supabase.rpc('wallet_refund', {
+        p_user_id: buyerId,
+        p_amount: escrowTotal,
+        p_order_id: orderId || '__pending__',
+        p_reason: 'order_creation_failed',
+      }).catch(() => {}); // best-effort refund
+      throw e;
+    }
 
     return orderId;
   },
@@ -388,19 +412,23 @@ export const orders = {
     if (actorId) logRow.actor_id = actorId;
     await supabase.from('order_status_logs').insert(logRow);
 
-    // Release escrow on delivery
-    if (toStatus === 'delivered' || toStatus === 'collected') {
-      const { data: order } = await supabase
-        .from('orders')
-        .select('total_value, platform_fee, vat, buyer_id')
-        .eq('id', orderId)
-        .single();
-      if (order) {
-        await wallet._release(order.buyer_id, order.total_value + order.platform_fee + order.vat, orderId);
+    // C6 FIX: Deduct stock when order is confirmed
+    if (toStatus === 'confirmed') {
+      const { error: stockErr } = await supabase.rpc('deduct_order_stock', { p_order_id: orderId });
+      if (stockErr) {
+        // Rollback status change if stock deduction fails
+        await supabase.from('orders').update({ status: current.status }).eq('id', orderId);
+        throw new Error(stockErr.message || 'Failed to deduct stock. Order not confirmed.');
       }
     }
 
-    // Refund escrow on rejection/cancellation
+    // C3 FIX: Atomic escrow release + depot payment on delivery
+    if (toStatus === 'delivered' || toStatus === 'collected') {
+      const { error: releaseErr } = await supabase.rpc('wallet_release_and_pay', { p_order_id: orderId });
+      if (releaseErr) assertOk(releaseErr, 'orders.updateStatus:release');
+    }
+
+    // Refund escrow on rejection/cancellation (atomic)
     if (toStatus === 'rejected' || toStatus === 'cancelled') {
       const { data: order } = await supabase
         .from('orders')
@@ -408,8 +436,17 @@ export const orders = {
         .eq('id', orderId)
         .single();
       if (order) {
-        await wallet._refund(order.buyer_id, order.total_value + order.platform_fee + order.vat, orderId, toStatus);
+        const escrowTotal = order.total_value + order.platform_fee + order.vat;
+        const { error: refundErr } = await supabase.rpc('wallet_refund', {
+          p_user_id: order.buyer_id,
+          p_amount: escrowTotal,
+          p_order_id: orderId,
+          p_reason: toStatus,
+        });
+        if (refundErr) assertOk(refundErr, 'orders.updateStatus:refund');
       }
+      // Restore stock if it was previously deducted (confirmed → cancelled)
+      await supabase.rpc('restore_order_stock', { p_order_id: orderId }).catch(() => {});
     }
   },
 
@@ -526,87 +563,48 @@ export const wallet = {
     return data;
   },
 
-  /** Credit (top-up) — stub until payment gateway is integrated */
+  /** Credit (top-up) — uses atomic RPC */
   async credit(userId, amount, description, reference) {
     if (!amount || amount <= 0) throw new Error('Amount must be positive');
-    const { data: w } = await supabase
-      .from('wallets')
-      .select('id, balance_ngn')
-      .eq('user_id', userId)
-      .single();
-    if (!w) throw new Error('Wallet not found');
-
-    const { error: wErr } = await supabase
-      .from('wallets')
-      .update({ balance_ngn: w.balance_ngn + amount, updated_at: new Date().toISOString() })
-      .eq('id', w.id);
-    assertOk(wErr, 'wallet.credit:balance');
-
-    const { error: txErr } = await supabase.from('transactions').insert({
-      wallet_id: w.id, type: 'credit', amount, description, reference,
+    const { error } = await supabase.rpc('wallet_credit', {
+      p_user_id: userId,
+      p_amount: amount,
+      p_description: description || '',
+      p_reference: reference || null,
     });
-    assertOk(txErr, 'wallet.credit:transaction');
+    assertOk(error, 'wallet.credit');
   },
 
-  /** Internal: hold funds for an order */
+  /** Internal: hold funds for an order (atomic RPC) */
   async _hold(userId, amount, orderId) {
     if (!amount || amount <= 0) throw new Error('Hold amount must be positive');
-    const { data: w } = await supabase
-      .from('wallets')
-      .select('id, balance_ngn')
-      .eq('user_id', userId)
-      .single();
-    if (!w) throw new Error('Wallet not found — cannot hold funds');
-    if (w.balance_ngn < amount) throw new Error('Insufficient wallet balance');
-
-    const { error: wErr } = await supabase.from('wallets')
-      .update({ balance_ngn: w.balance_ngn - amount, updated_at: new Date().toISOString() })
-      .eq('id', w.id);
-    assertOk(wErr, 'wallet._hold:balance');
-    const { error: txErr } = await supabase.from('transactions').insert({
-      wallet_id: w.id, type: 'hold', amount,
-      description: `Order ${orderId} — Payment held in escrow`,
-      order_id: orderId,
+    const { data: held, error } = await supabase.rpc('wallet_hold', {
+      p_user_id: userId,
+      p_amount: amount,
+      p_order_id: orderId,
     });
-    assertOk(txErr, 'wallet._hold:transaction');
+    if (error) assertOk(error, 'wallet._hold');
+    if (!held) throw new Error('Insufficient wallet balance');
   },
 
-  /** Internal: release funds after delivery */
-  async _release(userId, amount, orderId) {
-    if (!amount || amount <= 0) throw new Error('Release amount must be positive');
-    const { data: w } = await supabase
-      .from('wallets')
-      .select('id')
-      .eq('user_id', userId)
-      .single();
-    if (!w) throw new Error('Wallet not found — cannot release funds');
-    const { error: txErr } = await supabase.from('transactions').insert({
-      wallet_id: w.id, type: 'release', amount,
-      description: `Order ${orderId} — Payment released to depot`,
-      order_id: orderId,
+  /** Internal: release funds + pay depot (atomic RPC) */
+  async _release(orderId) {
+    const { error } = await supabase.rpc('wallet_release_and_pay', {
+      p_order_id: orderId,
     });
-    assertOk(txErr, 'wallet._release:transaction');
+    assertOk(error, 'wallet._release');
   },
 
-  /** Internal: refund buyer on rejection/cancellation */
+  /** Internal: refund buyer on rejection/cancellation (atomic RPC) */
   async _refund(userId, amount, orderId, reason = 'cancelled') {
     if (!amount || amount <= 0) throw new Error('Refund amount must be positive');
-    const { data: w } = await supabase
-      .from('wallets')
-      .select('id, balance_ngn')
-      .eq('user_id', userId)
-      .single();
-    if (!w) throw new Error('Wallet not found — cannot refund');
-    const { error: wErr } = await supabase.from('wallets')
-      .update({ balance_ngn: w.balance_ngn + amount, updated_at: new Date().toISOString() })
-      .eq('id', w.id);
-    assertOk(wErr, 'wallet._refund:balance');
-    const { error: txErr } = await supabase.from('transactions').insert({
-      wallet_id: w.id, type: 'refund', amount,
-      description: `Order ${orderId} — Refund (order ${reason})`,
-      order_id: orderId,
+    const { error } = await supabase.rpc('wallet_refund', {
+      p_user_id: userId,
+      p_amount: amount,
+      p_order_id: orderId,
+      p_reason: reason,
     });
-    assertOk(txErr, 'wallet._refund:transaction');
+    assertOk(error, 'wallet._refund');
   },
 };
 
