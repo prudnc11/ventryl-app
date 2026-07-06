@@ -72,7 +72,7 @@ function OrderFlow({onDone,isMobile}) {
       <div style={{fontSize:"13px",color:T.gray400,marginBottom:"24px"}}>{sel?.name} will confirm within 2 hours.</div>
       <div style={{border:`1px solid ${T.gray100}`,marginBottom:"18px",textAlign:"left"}}>
         {[
-          ["Order ID",submittedId||"VTL-00845"],
+          ["Order ID",submittedId||"—"],
           ["Depot",sel?.name],
           ["Products",enabledProducts.map(([n])=>n).join(" + ")],
           ["Delivery Method",deliveryMode==="delivery"?"🚛 Delivery":"🏭 Self Pick-up"],

@@ -18,7 +18,7 @@ import { TeamSettings } from "./TeamSettings";
 
 function Toggle({on,onChange}) {
   return (
-    <div onClick={()=>onChange(!on)} style={{width:"38px",height:"22px",background:on?T.green:T.gray200,borderRadius:"11px",cursor:"pointer",position:"relative",flexShrink:0,transition:"background 0.2s"}}>
+    <div role="switch" aria-checked={on} tabIndex={0} onClick={()=>onChange(!on)} onKeyDown={e=>{if(e.key===" "||e.key==="Enter"){e.preventDefault();onChange(!on);}}} style={{width:"38px",height:"22px",background:on?T.green:T.gray200,borderRadius:"11px",cursor:"pointer",position:"relative",flexShrink:0,transition:"background 0.2s"}}>
       <div style={{width:"16px",height:"16px",background:T.white,borderRadius:"50%",position:"absolute",top:"3px",left:on?"19px":"3px",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.18)"}}/>
     </div>
   );
@@ -133,6 +133,7 @@ function PasswordChangeForm({onDone,F,T}) {
 function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
   const [tab,setTab]=useState("profile");
   const [saved,setSaved]=useState(false);
+  const [saveErr,setSaveErr]=useState("");
   const [notif,setNotif]=useState({orderUpdates:true,priceAlerts:true,slaWarnings:true,deliveryConfirm:true,emailCh:true,smsCh:true,pushCh:false,weeklyReport:portalType==="depot"});
   const [twoFA,setTwoFA]=useState(true);
   const [showPwForm,setShowPwForm]=useState(false);
@@ -210,7 +211,7 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
       setSaved(true);
       setTimeout(()=>setSaved(false),2200);
     }catch(e){
-      console.error("Failed to save profile",e);
+      setSaveErr(e.message||"Failed to save profile. Please try again.");
     }finally{
       setProfileSaving(false);
     }
@@ -238,7 +239,7 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
       setSaved(true);
       setTimeout(()=>setSaved(false),2200);
     }catch(e){
-      console.error("Failed to save notif prefs",e);
+      setSaveErr(e.message||"Failed to save notification preferences.");
     }finally{
       setNotifSaving(false);
     }
@@ -337,7 +338,7 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
       if(onUpdateDepot) onUpdateDepot(depot.id);
       setSaved(true);setTimeout(()=>setSaved(false),2200);
     }catch(e){
-      console.error("Failed to save depot profile",e);
+      setSaveErr(e.message||"Failed to save depot profile.");
     }finally{
       setDepotSaving(false);
     }
@@ -433,7 +434,7 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
                         await depotsApi.update(depot.id,{vat_percent:parseFloat(vatInput)||7.5});
                         if(onUpdateDepot) onUpdateDepot(depot.id);
                         setSaved(true);setTimeout(()=>setSaved(false),2200);
-                      }catch(e){console.error("VAT update failed",e);}
+                      }catch(e){setSaveErr(e.message||"VAT update failed.");}
                       finally{setVatSaving(false);setShowVatConfirm(false);}
                     }} style={{flex:1,background:T.black,color:T.white,border:"none",padding:"10px",fontSize:"12px",fontWeight:800,cursor:vatSaving?"not-allowed":"pointer",fontFamily:F,minHeight:"40px"}}>
                       {vatSaving?"Saving…":"Confirm Change"}
@@ -881,6 +882,12 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
         </div>
       </div>
       <div style={{flex:1,minWidth:0}}>
+        {saveErr&&(
+          <div style={{background:"#FEE2E2",border:"1px solid #FECACA",padding:"10px 14px",marginBottom:"12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontSize:"12px",fontWeight:600,color:"#991B1B"}}>{saveErr}</span>
+            <button onClick={()=>setSaveErr("")} style={{background:"none",border:"none",fontSize:"14px",cursor:"pointer",color:"#991B1B",fontWeight:800}}>✕</button>
+          </div>
+        )}
         <div style={{marginBottom:"20px"}}>
           <div style={{fontSize:"16px",fontWeight:800,color:T.black}}>{activeTab?.label}</div>
           <div style={{fontSize:"11px",color:T.gray400,marginTop:"3px"}}>{SUBTITLES[tab]}</div>

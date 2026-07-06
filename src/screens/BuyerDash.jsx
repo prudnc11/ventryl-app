@@ -62,7 +62,9 @@ function BuyerDash({onOrder,isMobile}) {
           <div style={{padding:"14px 18px",borderBottom:`1px solid ${T.gray100}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div style={{fontSize:"13px",fontWeight:800,color:T.black}}>Active Orders</div>
           </div>
-          {activeOrders.map((o,i,arr)=>(
+          {activeOrders.length===0?(
+            <div style={{padding:"24px 18px",textAlign:"center",color:T.gray400,fontSize:"12px",fontWeight:600}}>No active orders</div>
+          ):activeOrders.map((o,i,arr)=>(
             <div key={o.id} style={{padding:"13px 18px",borderBottom:i<arr.length-1?`1px solid ${T.gray100}`:"none"}}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:"7px",gap:"8px"}}>
                 <div>

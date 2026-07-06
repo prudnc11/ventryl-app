@@ -266,6 +266,7 @@ function BuyerOrderDetail({isMobile}) {
   const [showDispute,setShowDispute]=useState(false);
   const [showCancelConfirm,setShowCancelConfirm]=useState(false);
   const [cancelling,setCancelling]=useState(false);
+  const [actionErr,setActionErr]=useState("");
   const [activeTab,setActiveTab]=useState("tracking");  // tracking | details | payment
 
   // Delivery cost negotiation state
@@ -285,7 +286,7 @@ function BuyerOrderDetail({isMobile}) {
         }));
         if(rounds.length>0) setQuoteRounds(rounds);
       }
-    }catch(e){console.error("[BuyerOrderDetail] loadNeg",e);}
+    }catch(e){/* negotiation load is non-critical, fail silently */}
   },[orderId]);
 
   // Always load fresh detail from DB on mount (invalidate stale cache)
@@ -359,7 +360,7 @@ function BuyerOrderDetail({isMobile}) {
       setQuoteStatus("agreed");
       setShowCounterForm(false);
       reloadOrderDetail.current?.();
-    }catch(e){console.error("Approve quote error:",e);}
+    }catch(e){setActionErr(e.message||"Failed to approve quote. Please try again.");}
   };
 
   const sendCounterOffer=async(amount)=>{
@@ -369,7 +370,7 @@ function BuyerOrderDetail({isMobile}) {
       setCounterInput("");
       setShowCounterForm(false);
       reloadOrderDetail.current?.();
-    }catch(e){console.error("Counter offer error:",e);}
+    }catch(e){setActionErr(e.message||"Failed to send counter offer. Please try again.");}
   };
 
   if(loading) return (
@@ -443,7 +444,7 @@ function BuyerOrderDetail({isMobile}) {
                   setShowCancelConfirm(false);
                   invalidateOrderDetail(orderId);
                   loadOrderDetail(orderId,true);
-                }catch(e){console.error("Cancel order error:",e);}
+                }catch(e){setActionErr(e.message||"Failed to cancel order. Please try again.");}
                 finally{setCancelling(false);}
               }} style={{flex:1,background:T.red,color:T.white,border:"none",padding:"12px",fontSize:"13px",fontWeight:800,cursor:cancelling?"not-allowed":"pointer",fontFamily:F,minHeight:"46px",opacity:cancelling?0.6:1}}>
                 {cancelling?"Cancelling…":"Yes, Cancel Order"}
@@ -474,11 +475,18 @@ function BuyerOrderDetail({isMobile}) {
                   await ordersApi.updateStatus(orderId,"delivered",{actorId:authUser?.id,note:"Receipt confirmed by buyer"});
                   _buyerConfirmedStore[orderId]=true;setDeliveryConfirmed(true);setShowConfirmModal(false);
                   reloadOrderDetail.current?.();
-                }catch(e){console.error("Confirm receipt error:",e);}
+                }catch(e){setActionErr(e.message||"Failed to confirm receipt. Please try again.");}
               }} style={{flex:1,background:T.green,color:T.white,border:"none",padding:"12px",fontSize:"13px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"46px"}}>Yes, Confirm</button>
               <button onClick={()=>setShowConfirmModal(false)} style={{flex:1,background:"none",color:T.black,border:`1px solid ${T.gray200}`,padding:"12px",fontSize:"13px",fontWeight:700,cursor:"pointer",fontFamily:F,minHeight:"46px"}}>Cancel</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {actionErr&&(
+        <div style={{background:"#FEE2E2",border:"1px solid #FECACA",padding:"10px 14px",marginBottom:"12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontSize:"12px",fontWeight:600,color:"#991B1B"}}>{actionErr}</span>
+          <button onClick={()=>setActionErr("")} style={{background:"none",border:"none",fontSize:"14px",cursor:"pointer",color:"#991B1B",fontWeight:800}}>✕</button>
         </div>
       )}
 

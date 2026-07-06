@@ -36,7 +36,7 @@ function DepotOrderDetail({isMobile}) {
     try{
       const neg=await negotiationsApi.get(orderId);
       if(neg) setLocalNeg(neg);
-    }catch(e){console.error("[DepotOrderDetail] loadNeg",e);}
+    }catch(e){/* negotiation load is non-critical */}
   },[orderId]);
 
   useEffect(()=>{

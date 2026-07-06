@@ -72,14 +72,11 @@ function CreateDepotFlow({onCreateDepot,onDone,onCancel,isMobile}) {
     try{
       // ── Diagnostic: verify session before attempting insert ──
       const {data:{session},error:sessErr}=await supabase.auth.getSession();
-      console.log('[CreateDepot] session:', session?.user?.id, 'sessErr:', sessErr);
       if(!session) throw new Error('Session expired — please sign out and sign back in.');
-      // ── End diagnostic ──
       const depot=await onCreateDepot(form);
       setCreatedDepot(depot);
       setStep(4);
     }catch(e){
-      console.error('[CreateDepotFlow] create failed:', e.name, e.message, e);
       setCreateErr(e.message||"Failed to create depot. Please try again.");
     }finally{
       setCreating(false);

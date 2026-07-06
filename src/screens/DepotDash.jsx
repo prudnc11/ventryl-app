@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
+// recharts imports removed — charts replaced with placeholder until real data is wired
 import { useNavigate, useParams } from "react-router-dom";
 import { T, F } from "../lib/tokens";
 import { NG_STATES } from "../lib/ngStates";
 import { useBreakpoint } from "../hooks/useBreakpoint";
 import { useAuthStore } from "../store/authStore";
 import { useVentrylStore } from "../store/ventrylStore";
-import { Badge, Icon, Card, KpiCard, SectionHead, ChartTip, Sidebar, Topbar } from "../components/shared";
+import { Badge, Icon, Card, KpiCard, SectionHead, Sidebar, Topbar } from "../components/shared";
 import { _deliveryQuoteStore, _orderStatusStore, _orderBayStore, _orderTruckListStore, _orderDispatchedStore, _orderStatusLogStore, _gateRecordStore, _buyerConfirmedStore } from "../lib/sessionCache";
 import { kyc as kycApi, kyb as kybApi, notifications as notifApi, depots as depotsApi, profiles as profilesApi, orders as ordersApi, negotiations as negotiationsApi, teamMembers as teamMembersApi } from "../lib/api";
 import { supabase } from "../lib/supabase";
@@ -88,28 +88,15 @@ function DepotDash({isMobile,depot}) {
       <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1.5fr 1fr",gap:"14px"}}>
         <Card>
           <SectionHead title="Revenue Trend" sub="₦ Millions · 6 months"/>
-          <ResponsiveContainer width="100%" height={isMobile?150:170}>
-            <AreaChart data={[]} margin={{top:4,right:0,bottom:0,left:-24}}>
-              <defs><linearGradient id="rg" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={T.green} stopOpacity={0.15}/><stop offset="95%" stopColor={T.green} stopOpacity={0}/></linearGradient></defs>
-              <CartesianGrid strokeDasharray="2 4" stroke={T.gray100}/>
-              <XAxis dataKey="month" tick={{fill:T.gray400,fontSize:10,fontFamily:F,fontWeight:600}} axisLine={false} tickLine={false}/>
-              <YAxis tick={{fill:T.gray400,fontSize:10,fontFamily:F,fontWeight:600}} axisLine={false} tickLine={false}/>
-              <Tooltip content={<ChartTip/>}/>
-              <Area type="monotone" dataKey="revenue" stroke={T.green} strokeWidth={2.5} fill="url(#rg)" name="Revenue" dot={{fill:T.green,r:3,strokeWidth:0}}/>
-            </AreaChart>
-          </ResponsiveContainer>
+          <div style={{height:isMobile?150:170,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <div style={{fontSize:"12px",color:T.gray400,fontWeight:600}}>No revenue data yet</div>
+          </div>
         </Card>
         <Card>
           <SectionHead title="Orders by Day" sub="This week"/>
-          <ResponsiveContainer width="100%" height={isMobile?150:170}>
-            <BarChart data={[]} barSize={7} margin={{left:-24,bottom:0}}>
-              <CartesianGrid strokeDasharray="2 4" stroke={T.gray100} vertical={false}/>
-              <XAxis dataKey="day" tick={{fill:T.gray400,fontSize:10,fontFamily:F,fontWeight:600}} axisLine={false} tickLine={false}/>
-              <Tooltip content={<ChartTip/>}/>
-              <Bar dataKey="pms" fill={T.green} name="PMS" radius={[2,2,0,0]}/>
-              <Bar dataKey="ago" fill={T.blue} name="AGO" radius={[2,2,0,0]}/>
-            </BarChart>
-          </ResponsiveContainer>
+          <div style={{height:isMobile?150:170,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <div style={{fontSize:"12px",color:T.gray400,fontWeight:600}}>No order data yet</div>
+          </div>
         </Card>
       </div>
     </div>
