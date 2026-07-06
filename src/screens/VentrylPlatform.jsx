@@ -75,7 +75,6 @@ const CRUMB_MAP = {
   "/wallet":      "Wallet",
   "/place-order": "Place Order",
   "/settings":    "Settings",
-  "/admin":       "Admin Panel",
 };
 
 export function VentrylPlatform({ bp, user, onSignOut }) {
@@ -165,6 +164,8 @@ export function VentrylPlatform({ bp, user, onSignOut }) {
   };
 
   // Breadcrumb from URL path
+  const isAdmin = !!user?.isAdmin;
+
   const getCrumb = () => {
     const p = location.pathname;
     if (p.startsWith("/depot/") && p.includes("/order/")) {
@@ -179,10 +180,9 @@ export function VentrylPlatform({ bp, user, onSignOut }) {
       return d?.name || "Depot";
     }
     if (p.startsWith("/orders/")) return p.replace("/orders/", "");
-    return CRUMB_MAP[p] || "Dashboard";
+    if (p === "/admin" && isAdmin) return "Admin Panel";
+    return CRUMB_MAP[p] || "Page Not Found";
   };
-
-  const isAdmin = !!user?.isAdmin;
   const pendingKyb = depots.filter(d => d.kyb !== "verified").length;
   const pills = [
     authProfile?.kyc_status === "verified" || authProfile?.kyc_status === "approved" ? { bg: T.greenLight, color: T.greenDark, label: "KYC ✓" }
