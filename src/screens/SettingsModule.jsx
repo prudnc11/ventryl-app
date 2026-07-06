@@ -74,6 +74,62 @@ function NotifRow({label,sub,on,onChange}) {
   );
 }
 
+function PasswordChangeForm({onDone,F,T}) {
+  const [currentPw,setCurrentPw]=useState("");
+  const [newPw,setNewPw]=useState("");
+  const [confirmPw,setConfirmPw]=useState("");
+  const [saving,setSaving]=useState(false);
+  const [error,setError]=useState("");
+  const [done,setDone]=useState(false);
+
+  const handleSubmit=async()=>{
+    setError("");
+    if(newPw.length<8){setError("New password must be at least 8 characters.");return;}
+    if(newPw!==confirmPw){setError("Passwords do not match.");return;}
+    setSaving(true);
+    try{
+      // Verify current password by re-authenticating
+      const {data:{user}}=await supabase.auth.getUser();
+      const {error:signInErr}=await supabase.auth.signInWithPassword({email:user?.email,password:currentPw});
+      if(signInErr){setError("Current password is incorrect.");setSaving(false);return;}
+      // Update password
+      const {error:updateErr}=await supabase.auth.updateUser({password:newPw});
+      if(updateErr){setError(updateErr.message);setSaving(false);return;}
+      setDone(true);
+      setTimeout(()=>onDone(),1500);
+    }catch(e){
+      setError(e.message||"Failed to update password.");
+    }finally{
+      setSaving(false);
+    }
+  };
+
+  return(
+    <div>
+      <div style={{marginBottom:"12px"}}>
+        <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"6px"}}>Current Password</div>
+        <input type="password" value={currentPw} onChange={e=>setCurrentPw(e.target.value)}
+          style={{width:"100%",border:`1px solid ${T.gray200}`,padding:"10px 14px",fontFamily:F,fontSize:"13px",fontWeight:600,color:T.black,outline:"none",boxSizing:"border-box"}}/>
+      </div>
+      <div style={{marginBottom:"12px"}}>
+        <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"6px"}}>New Password</div>
+        <input type="password" value={newPw} onChange={e=>setNewPw(e.target.value)}
+          style={{width:"100%",border:`1px solid ${T.gray200}`,padding:"10px 14px",fontFamily:F,fontSize:"13px",fontWeight:600,color:T.black,outline:"none",boxSizing:"border-box"}}/>
+      </div>
+      <div style={{marginBottom:"12px"}}>
+        <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"6px"}}>Confirm New Password</div>
+        <input type="password" value={confirmPw} onChange={e=>setConfirmPw(e.target.value)}
+          style={{width:"100%",border:`1px solid ${T.gray200}`,padding:"10px 14px",fontFamily:F,fontSize:"13px",fontWeight:600,color:T.black,outline:"none",boxSizing:"border-box"}}/>
+      </div>
+      {error&&<div style={{fontSize:"11px",color:T.red,fontWeight:600,marginBottom:"10px"}}>{error}</div>}
+      <div style={{display:"flex",gap:"8px"}}>
+        <button disabled={saving||done} onClick={handleSubmit} style={{background:done?T.green:T.black,color:T.white,border:"none",padding:"11px 20px",fontSize:"12px",fontWeight:800,cursor:saving?"not-allowed":"pointer",fontFamily:F,minHeight:"42px",opacity:saving?0.6:1}}>{done?"✓ Updated":saving?"Updating…":"Update Password"}</button>
+        <button onClick={onDone} style={{background:T.white,color:T.gray400,border:`1px solid ${T.gray200}`,padding:"11px 20px",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:F,minHeight:"42px"}}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
   const [tab,setTab]=useState("profile");
   const [saved,setSaved]=useState(false);
@@ -201,6 +257,18 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
   const [kycSubmitting,setKycSubmitting]=useState(false);
   const [kycSubmitted,setKycSubmitted]=useState(authProfile?.kyc_status==="submitted"||authProfile?.kyc_status==="verified");
   const [kycSubmitErr,setKycSubmitErr]=useState("");
+
+  // Load previously uploaded KYC docs on mount
+  useEffect(()=>{
+    if(!authUser?.id||portalType!=="buyer") return;
+    kycApi.getDocuments(authUser.id).then(docs=>{
+      const uploaded={};
+      for(const doc of docs){
+        uploaded[doc.type]=doc.file_name||"Uploaded";
+      }
+      setKycUploaded(prev=>({...uploaded,...prev}));
+    }).catch(()=>{});
+  },[authUser?.id]);
 
   const KYC_DOCS=[
     {key:"nin",            label:"NIN / National ID",          required:true,  hint:"National Identity Number slip or NIN card"},
@@ -446,7 +514,6 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
             <FieldRow label="Daily transaction limit (₦)" value="250,000,000"/>
           </div>
         </SettingsBlock>
-        <SaveBtn/>
       </div>
     ),
 
@@ -490,7 +557,7 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
             </div>
           ))}
         </SettingsBlock>
-        <SaveBtn label="Save Bay Config"/>
+        <div style={{fontSize:"11px",color:T.gray400,marginTop:"10px"}}>Bay configuration is managed per depot. Contact support for changes.</div>
       </div>
     ),
 
@@ -617,15 +684,7 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
         </SettingsBlock>
         <SettingsBlock title="Password">
           {showPwForm?(
-            <div>
-              {[["Current Password","password"],["New Password","password"],["Confirm New Password","password"]].map(([l,t])=>(
-                <FieldRow key={l} label={l} value="" type={t}/>
-              ))}
-              <div style={{display:"flex",gap:"8px"}}>
-                <button onClick={()=>{handleSave();setTimeout(()=>setShowPwForm(false),1400);}} style={{background:saved?T.green:T.black,color:T.white,border:"none",padding:"11px 20px",fontSize:"12px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"42px"}}>{saved?"✓ Updated":"Update Password"}</button>
-                <button onClick={()=>setShowPwForm(false)} style={{background:T.white,color:T.gray400,border:`1px solid ${T.gray200}`,padding:"11px 20px",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:F,minHeight:"42px"}}>Cancel</button>
-              </div>
-            </div>
+            <PasswordChangeForm onDone={()=>setShowPwForm(false)} F={F} T={T}/>
           ):(
             <button onClick={()=>setShowPwForm(true)} style={{background:T.white,color:T.black,border:`1px solid ${T.gray200}`,padding:"11px 18px",fontSize:"12px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"42px"}}>Change Password →</button>
           )}

@@ -264,6 +264,8 @@ function BuyerOrderDetail({isMobile}) {
   },[meta?.timeline]);
   const [showConfirmModal,setShowConfirmModal]=useState(false);
   const [showDispute,setShowDispute]=useState(false);
+  const [showCancelConfirm,setShowCancelConfirm]=useState(false);
+  const [cancelling,setCancelling]=useState(false);
   const [activeTab,setActiveTab]=useState("tracking");  // tracking | details | payment
 
   // Delivery cost negotiation state
@@ -425,6 +427,32 @@ function BuyerOrderDetail({isMobile}) {
     <div>
       {/* Modals */}
       {showDispute&&<DisputeModal onClose={()=>setShowDispute(false)} orderId={orderId} product={product} vol={vol}/>}
+      {showCancelConfirm&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px"}}>
+          <div style={{background:T.white,maxWidth:"400px",width:"100%",padding:"28px",fontFamily:F}}>
+            <div style={{fontSize:"18px",fontWeight:800,color:T.black,marginBottom:"10px"}}>Cancel Order?</div>
+            <div style={{fontSize:"13px",color:T.gray600,lineHeight:1.6,marginBottom:"16px"}}>
+              Are you sure you want to cancel order <strong>{orderId}</strong>? Your escrowed funds will be refunded to your wallet.
+            </div>
+            <div style={{display:"flex",gap:"8px"}}>
+              <button disabled={cancelling} onClick={async()=>{
+                setCancelling(true);
+                try{
+                  await ordersApi.updateStatus(orderId,"cancelled",{actorId:authUser?.id,note:"Cancelled by buyer"});
+                  setLiveStatus("cancelled");_orderStatusStore[orderId]="cancelled";
+                  setShowCancelConfirm(false);
+                  invalidateOrderDetail(orderId);
+                  loadOrderDetail(orderId,true);
+                }catch(e){console.error("Cancel order error:",e);}
+                finally{setCancelling(false);}
+              }} style={{flex:1,background:T.red,color:T.white,border:"none",padding:"12px",fontSize:"13px",fontWeight:800,cursor:cancelling?"not-allowed":"pointer",fontFamily:F,minHeight:"46px",opacity:cancelling?0.6:1}}>
+                {cancelling?"Cancelling…":"Yes, Cancel Order"}
+              </button>
+              <button onClick={()=>setShowCancelConfirm(false)} style={{flex:1,background:"none",color:T.black,border:`1px solid ${T.gray200}`,padding:"12px",fontSize:"13px",fontWeight:700,cursor:"pointer",fontFamily:F,minHeight:"46px"}}>Keep Order</button>
+            </div>
+          </div>
+        </div>
+      )}
       {showConfirmModal&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px"}}>
           <div style={{background:T.white,maxWidth:"400px",width:"100%",padding:"28px"}}>
@@ -594,7 +622,7 @@ function BuyerOrderDetail({isMobile}) {
             <div style={{background:T.green,color:T.white,padding:"10px 16px",fontSize:"12px",fontWeight:800}}>✓ Receipt Confirmed</div>
           )}
           {liveStatus==="pending"&&(
-            <button onClick={()=>setShowDispute(true)} style={{background:"transparent",color:"#aaa",border:"1px solid #333",padding:"9px 14px",fontSize:"11px",fontWeight:700,cursor:"pointer",fontFamily:F,minHeight:"40px",flexShrink:0}}>
+            <button onClick={()=>setShowCancelConfirm(true)} style={{background:"transparent",color:"#aaa",border:"1px solid #333",padding:"9px 14px",fontSize:"11px",fontWeight:700,cursor:"pointer",fontFamily:F,minHeight:"40px",flexShrink:0}}>
               Cancel Order
             </button>
           )}

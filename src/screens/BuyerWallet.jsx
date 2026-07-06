@@ -221,30 +221,13 @@ function BuyerWallet({isMobile}) {
       {/* Withdraw modal */}
       {showWithdraw&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px"}}>
-          <div style={{background:T.white,maxWidth:"400px",width:"100%",padding:"28px"}}>
-            {withdrawDone?(
-              <div style={{textAlign:"center"}}>
-                <div style={{fontSize:"32px",marginBottom:"14px"}}>✓</div>
-                <div style={{fontSize:"16px",fontWeight:800,color:T.black,marginBottom:"8px"}}>Withdrawal Submitted</div>
-                <div style={{fontSize:"12px",color:T.gray400,marginBottom:"20px"}}>Processing within 1 business day. You'll receive a confirmation SMS.</div>
-                <button onClick={()=>setShowWithdraw(false)} style={{background:T.black,color:T.white,border:"none",padding:"11px",fontSize:"13px",fontWeight:800,cursor:"pointer",fontFamily:F,width:"100%"}}>Done</button>
-              </div>
-            ):(
-              <>
-                <div style={{fontSize:"16px",fontWeight:800,color:T.black,marginBottom:"4px"}}>Withdraw NGN</div>
-                <div style={{fontSize:"11px",color:T.gray400,marginBottom:"20px"}}>Available: {cur.fmt(cur.balance)}</div>
-                <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:"6px"}}>Amount (NGN)</div>
-                <input type="number" value={withdrawAmt} onChange={e=>setWithdrawAmt(e.target.value)} placeholder="Enter amount"
-                  style={{width:"100%",border:`1px solid ${T.gray200}`,padding:"12px 14px",fontFamily:F,fontSize:"15px",fontWeight:700,color:T.black,outline:"none",marginBottom:"16px"}}/>
-                <div style={{background:T.gray50,padding:"10px 14px",fontSize:"11px",color:T.gray400,marginBottom:"20px"}}>
-                  To: {authProfile?.bank_name||"Bank"} · {authProfile?.bank_account||"—"} · {authProfile?.company_name||""}
-                </div>
-                <div style={{display:"flex",gap:"8px"}}>
-                  <button onClick={()=>setWithdrawDone(true)} disabled={!withdrawAmt} style={{flex:1,background:withdrawAmt?T.black:T.gray200,color:withdrawAmt?T.white:T.gray400,border:"none",padding:"11px",fontSize:"13px",fontWeight:800,cursor:withdrawAmt?"pointer":"not-allowed",fontFamily:F,minHeight:"44px"}}>Withdraw</button>
-                  <button onClick={()=>setShowWithdraw(false)} style={{flex:1,background:"none",color:T.black,border:`1px solid ${T.gray200}`,padding:"11px",fontSize:"13px",fontWeight:700,cursor:"pointer",fontFamily:F,minHeight:"44px"}}>Cancel</button>
-                </div>
-              </>
-            )}
+          <div style={{background:T.white,maxWidth:"400px",width:"100%",padding:"28px",fontFamily:F,textAlign:"center"}}>
+            <div style={{fontSize:"32px",marginBottom:"14px"}}>🏦</div>
+            <div style={{fontSize:"16px",fontWeight:800,color:T.black,marginBottom:"8px"}}>Withdrawals Coming Soon</div>
+            <div style={{fontSize:"12px",color:T.gray400,marginBottom:"20px",lineHeight:1.6}}>
+              Bank withdrawals are being integrated with our payment partner. You will be able to withdraw funds to your linked bank account shortly.
+            </div>
+            <button onClick={()=>setShowWithdraw(false)} style={{background:T.black,color:T.white,border:"none",padding:"11px 24px",fontSize:"13px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"44px"}}>Got it</button>
           </div>
         </div>
       )}
