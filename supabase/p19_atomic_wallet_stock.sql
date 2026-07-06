@@ -93,14 +93,15 @@ BEGIN
     RAISE EXCEPTION 'Refund amount must be positive';
   END IF;
 
+  -- Ensure wallet exists
+  INSERT INTO wallets (user_id, balance_ngn)
+  VALUES (p_user_id, 0)
+  ON CONFLICT (user_id) DO NOTHING;
+
   UPDATE wallets
   SET balance_ngn = balance_ngn + p_amount, updated_at = now()
   WHERE user_id = p_user_id
   RETURNING id INTO v_wallet_id;
-
-  IF v_wallet_id IS NULL THEN
-    RAISE EXCEPTION 'Wallet not found for user %', p_user_id;
-  END IF;
 
   INSERT INTO transactions (wallet_id, type, amount, description, order_id)
   VALUES (v_wallet_id, 'refund', p_amount,
@@ -133,11 +134,12 @@ BEGIN
 
   v_escrow_total := v_order.total_value + v_order.platform_fee + v_order.vat;
 
-  -- Get buyer wallet
+  -- Ensure buyer has a wallet
+  INSERT INTO wallets (user_id, balance_ngn)
+  VALUES (v_order.buyer_id, 0)
+  ON CONFLICT (user_id) DO NOTHING;
+
   SELECT id INTO v_buyer_wallet_id FROM wallets WHERE user_id = v_order.buyer_id;
-  IF v_buyer_wallet_id IS NULL THEN
-    RAISE EXCEPTION 'Buyer wallet not found';
-  END IF;
 
   -- Log release transaction on buyer wallet
   INSERT INTO transactions (wallet_id, type, amount, description, order_id)

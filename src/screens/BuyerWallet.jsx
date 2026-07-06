@@ -29,6 +29,8 @@ function BuyerWallet({isMobile}) {
   const [withdrawAmt,setWithdrawAmt]=useState("");
   const [withdrawDone,setWithdrawDone]=useState(false);
 
+  const isDev=import.meta.env.DEV;
+
   const handlePaystackFund=async()=>{
     const amt=parseInt(fundAmt);
     if(!amt||amt<1000){setFundErr("Minimum top-up is ₦1,000");return;}
@@ -55,6 +57,30 @@ function BuyerWallet({isMobile}) {
       });
     }catch(e){
       setFundErr(e.message||"Payment failed");
+      setFundLoading(false);
+    }
+  };
+
+  const handleDevCredit=async()=>{
+    const amt=parseInt(fundAmt);
+    if(!amt||amt<1000){setFundErr("Minimum top-up is ₦1,000");return;}
+    if(!authUser){setFundErr("Not authenticated.");return;}
+    setFundLoading(true);
+    setFundErr("");
+    try{
+      const ref=`DEV-${Date.now().toString(36).toUpperCase()}`;
+      const { error }=await supabase.rpc('wallet_credit',{
+        p_user_id:authUser.id,
+        p_amount:amt,
+        p_description:`Dev top-up — ₦${amt.toLocaleString('en-NG')}`,
+        p_reference:ref,
+      });
+      if(error) throw new Error(error.message);
+      await loadWallet(authUser.id);
+      setFundDone(true);
+    }catch(e){
+      setFundErr(e.message||"Credit failed");
+    }finally{
       setFundLoading(false);
     }
   };
@@ -203,14 +229,23 @@ function BuyerWallet({isMobile}) {
                 <div style={{background:T.gray50,padding:"10px 14px",fontSize:"11px",color:T.gray400,marginBottom:"16px",lineHeight:1.5}}>
                   You will be redirected to Paystack's secure checkout. Your card/bank details are never stored on Ventryl.
                 </div>
-                <div style={{display:"flex",gap:"8px"}}>
-                  <button
-                    onClick={handlePaystackFund}
-                    disabled={!fundAmt||fundLoading}
-                    style={{flex:1,background:fundAmt&&!fundLoading?T.green:T.gray200,color:fundAmt&&!fundLoading?T.white:T.gray400,border:"none",padding:"11px",fontSize:"13px",fontWeight:800,cursor:fundAmt&&!fundLoading?"pointer":"not-allowed",fontFamily:F,minHeight:"44px"}}>
-                    {fundLoading?"Opening Paystack…":"Pay with Paystack →"}
-                  </button>
-                  <button onClick={()=>{setShowFund(false);setFundErr("");setFundAmt("");}} style={{flex:1,background:"none",color:T.black,border:`1px solid ${T.gray200}`,padding:"11px",fontSize:"13px",fontWeight:700,cursor:"pointer",fontFamily:F,minHeight:"44px"}}>Cancel</button>
+                <div style={{display:"flex",gap:"8px",flexDirection:"column"}}>
+                  {isDev?(
+                    <button
+                      onClick={handleDevCredit}
+                      disabled={!fundAmt||fundLoading}
+                      style={{background:fundAmt&&!fundLoading?T.green:T.gray200,color:fundAmt&&!fundLoading?T.white:T.gray400,border:"none",padding:"11px",fontSize:"13px",fontWeight:800,cursor:fundAmt&&!fundLoading?"pointer":"not-allowed",fontFamily:F,minHeight:"44px"}}>
+                      {fundLoading?"Crediting…":"⚡ Instant Credit (Dev Mode)"}
+                    </button>
+                  ):(
+                    <button
+                      onClick={handlePaystackFund}
+                      disabled={!fundAmt||fundLoading}
+                      style={{background:fundAmt&&!fundLoading?T.green:T.gray200,color:fundAmt&&!fundLoading?T.white:T.gray400,border:"none",padding:"11px",fontSize:"13px",fontWeight:800,cursor:fundAmt&&!fundLoading?"pointer":"not-allowed",fontFamily:F,minHeight:"44px"}}>
+                      {fundLoading?"Opening Paystack…":"Pay with Paystack →"}
+                    </button>
+                  )}
+                  <button onClick={()=>{setShowFund(false);setFundErr("");setFundAmt("");}} style={{background:"none",color:T.black,border:`1px solid ${T.gray200}`,padding:"11px",fontSize:"13px",fontWeight:700,cursor:"pointer",fontFamily:F,minHeight:"44px"}}>Cancel</button>
                 </div>
               </>
             )}
