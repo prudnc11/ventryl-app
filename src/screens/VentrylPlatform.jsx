@@ -35,6 +35,19 @@ class ErrorBoundary extends Component {
   }
 }
 
+// ── 404 Not Found ────────────────────────────────────────────────────────────
+function NotFound() {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", fontFamily: F }}>
+      <div style={{ textAlign: "center", maxWidth: "400px", padding: "20px" }}>
+        <div style={{ fontSize: "64px", fontWeight: 900, color: T.gray200, lineHeight: 1 }}>404</div>
+        <div style={{ fontSize: "14px", fontWeight: 800, color: T.black, marginTop: "12px", marginBottom: "8px" }}>Page not found</div>
+        <div style={{ fontSize: "12px", color: T.gray400, lineHeight: 1.5, marginBottom: "20px" }}>The page you're looking for doesn't exist or you don't have access.</div>
+      </div>
+    </div>
+  );
+}
+
 // ── Code-split routes (lazy loaded) ─────────────────────────────────────────
 const UnifiedDash       = lazy(() => import("./UnifiedDash").then(m => ({ default: m.UnifiedDash })));
 const BuyerMarketplace  = lazy(() => import("./BuyerMarketplace").then(m => ({ default: m.BuyerMarketplace })));
@@ -240,6 +253,7 @@ export function VentrylPlatform({ bp, user, onSignOut }) {
                   <Route path="depot/:id" element={<DepotDetailView onViewOrder={(orderId, depotId) => navigate(`/depot/${depotId}/order/${orderId}`)} isMobile={isMobile} />} />
                   <Route path="depot/:depotId/order/:orderId" element={<DepotOrderDetail isMobile={isMobile} />} />
                   {isAdmin && <Route path="admin" element={<AdminPanel isMobile={isMobile} />} />}
+                  <Route path="*" element={<NotFound />} />
                 </Routes>
               </Suspense>
             </ErrorBoundary>
