@@ -132,7 +132,7 @@ export function VentrylPlatform({ bp, user, onSignOut }) {
       const base = ownerDepots.find(d => d.id === depotId);
       return base ? [...prev, { ...base, ...patch }] : prev;
     });
-    if (patch.products) {
+    if (patch?.products) {
       const currentDepot = depots.find(d => d.id === depotId);
       const currentNames = new Set((currentDepot?.products || []).map(p => p.name));
       const newNames = new Set(patch.products.map(p => p.name));
