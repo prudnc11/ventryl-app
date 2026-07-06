@@ -162,10 +162,10 @@ function adaptPriceHistory(rows) {
 
 /** wallet row + transaction rows → NGN wallet shape */
 function adaptWalletNGN(walletRow, txnRows) {
-  const balanceNGN = parseFloat(walletRow?.balance_ngn ?? 0);
+  const balanceNGN = Number(walletRow?.balance_ngn ?? 0);
   const txn = (txnRows || []).map(t => {
-    const amtNGN = parseFloat(t.amount || 0);
-    const isCredit = ['credit', 'release'].includes(t.type);
+    const amtNGN = Number(t.amount || 0);
+    const isCredit = ['credit', 'release', 'refund'].includes(t.type);
     const isDebit  = ['debit', 'hold', 'fee'].includes(t.type);
     return {
       id: t.reference || t.id,
@@ -175,10 +175,15 @@ function adaptWalletNGN(walletRow, txnRows) {
       type: isCredit ? 'credit' : isDebit ? 'debit' : 'paid',
     };
   });
+  // Calculate escrow from hold vs release/refund transactions
+  const escrowBalance = (txnRows || []).reduce((sum, t) => {
+    if (t.type === 'hold') return sum + Number(t.amount || 0);
+    if (t.type === 'release' || t.type === 'refund') return sum - Number(t.amount || 0);
+    return sum;
+  }, 0);
   return {
     balanceNGN,
-    balance: balanceNGN * 100,  // kept for legacy references
-    escrowBalance: 0,
+    escrowBalance: Math.max(0, escrowBalance),
     txn,
   };
 }

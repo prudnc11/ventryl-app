@@ -124,7 +124,7 @@ function DepotOrderDetail({isMobile}) {
   const [truckInputs,setTruckInputs]=useState(()=>Array.from({length:defaultTruckCount},emptyTruck));
   const totalOrderVol=meta.vol||raw?.vol||0;
   const truckVolTotal=truckInputs.reduce((s,t)=>s+(parseInt(t.vol)||0),0);
-  const trucksValid=truckInputs.length>0&&truckInputs.every(t=>t.driver.trim()&&t.plate.trim()&&parseInt(t.vol)>0)&&truckVolTotal>0;
+  const trucksValid=truckInputs.length>0&&truckInputs.every(t=>t.driver.trim()&&t.plate.trim()&&parseInt(t.vol)>0)&&truckVolTotal===totalOrderVol;
   const updateTruck=(i,field,val)=>setTruckInputs(list=>list.map((t,idx)=>idx===i?{...t,[field]:val}:t));
   const addTruck=()=>setTruckInputs(list=>[...list,emptyTruck()]);
   const removeTruck=(i)=>setTruckInputs(list=>list.filter((_,idx)=>idx!==i));

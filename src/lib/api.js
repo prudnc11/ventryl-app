@@ -203,17 +203,19 @@ export const depots = {
   /** Add or remove stock, recording in history */
   async adjustStock(depotId, product, quantity, type, reference) {
     // Update depot_products stock
-    const { data: current } = await supabase
+    const { data: current, error: fetchErr } = await supabase
       .from('depot_products')
       .select('stock')
       .eq('depot_id', depotId)
       .eq('product', product)
       .single();
+    assertOk(fetchErr, 'depots.adjustStock:fetch');
+    if (!current) throw new Error(`Product ${product} not found for depot`);
 
-    const newStock = (current?.stock ?? 0) + quantity;
+    const newStock = Math.max(0, (current.stock ?? 0) + quantity);
     const { error: updateErr } = await supabase
       .from('depot_products')
-      .update({ stock: Math.max(0, newStock), updated_at: new Date().toISOString() })
+      .update({ stock: newStock, updated_at: new Date().toISOString() })
       .eq('depot_id', depotId)
       .eq('product', product);
     assertOk(updateErr, 'depots.adjustStock:update');
@@ -235,14 +237,14 @@ export const orders = {
    */
   async create({ buyerId, depotId, deliveryMode, deliveryState, deliveryLga, deliveryAddress, pickupNote, items, vatPercent }) {
     const totalVolume = items.reduce((s, i) => s + i.volume, 0);
-    const totalValue = items.reduce((s, i) => s + i.pricePerLitre * i.volume, 0);
+    const totalValue = Math.round(items.reduce((s, i) => s + i.pricePerLitre * i.volume, 0));
     // Fetch platform fee percentage from DB (fallback to 1%)
     const { data: feeRow } = await supabase.from('platform_settings').select('value').eq('key', 'platform_fee_percent').maybeSingle();
-    const feePercent = parseFloat(feeRow?.value) || 1;
+    const feePercent = parseFloat(feeRow?.value) ?? 1;
     const platformFee = Math.round(totalValue * (feePercent / 100));
     const vatRate = (vatPercent ?? 7.5) / 100;
     const vat = Math.round(totalValue * vatRate);
-    const netToDepot = totalValue + vat;
+    const netToDepot = totalValue - platformFee;
     const trucksCount = Math.ceil(totalVolume / 33000);
 
     // Generate order ID from DB sequence; fall back to timestamp-based ID if not available
@@ -351,14 +353,16 @@ export const orders = {
 
   /** Transition order status (depot confirms, rejects, dispatches, etc.) */
   async updateStatus(orderId, toStatus, { actorId, note, patch } = {}) {
-    const { data: current } = await supabase
+    const { data: current, error: fetchErr } = await supabase
       .from('orders')
       .select('status')
       .eq('id', orderId)
       .single();
+    assertOk(fetchErr, 'orders.updateStatus:fetch');
+    if (!current) throw new Error(`Order ${orderId} not found`);
 
-    // Validate client-side before hitting the DB trigger
-    if (current?.status) assertValidTransition(current.status, toStatus);
+    // Validate transition
+    assertValidTransition(current.status, toStatus);
 
     const timestamps = {};
     if (toStatus === 'confirmed') timestamps.confirmed_at = new Date().toISOString();
@@ -367,11 +371,16 @@ export const orders = {
       timestamps.delivered_at = new Date().toISOString();
     }
 
-    const { error: upErr } = await supabase
+    // Optimistic concurrency: only update if status hasn't changed since we read it
+    const { data: updated, error: upErr } = await supabase
       .from('orders')
       .update({ status: toStatus, ...timestamps, ...(patch || {}) })
-      .eq('id', orderId);
+      .eq('id', orderId)
+      .eq('status', current.status)
+      .select('id')
+      .maybeSingle();
     assertOk(upErr, 'orders.updateStatus:order');
+    if (!updated) throw new Error(`Order ${orderId} status changed concurrently. Please refresh and try again.`);
 
     const logRow = { order_id: orderId, to_status: toStatus };
     if (current?.status) logRow.from_status = current.status;
@@ -439,6 +448,8 @@ export const orders = {
 export const negotiations = {
   /** Depot sends initial delivery cost quote */
   async sendQuote(orderId, party, amount) {
+    if (!['buyer', 'depot'].includes(party)) throw new Error('Invalid party');
+    if (!amount || amount <= 0) throw new Error('Quote amount must be positive');
     // Upsert the negotiation record
     const { data: neg, error: negErr } = await supabase
       .from('delivery_negotiations')
@@ -517,6 +528,7 @@ export const wallet = {
 
   /** Credit (top-up) — stub until payment gateway is integrated */
   async credit(userId, amount, description, reference) {
+    if (!amount || amount <= 0) throw new Error('Amount must be positive');
     const { data: w } = await supabase
       .from('wallets')
       .select('id, balance_ngn')
@@ -530,62 +542,71 @@ export const wallet = {
       .eq('id', w.id);
     assertOk(wErr, 'wallet.credit:balance');
 
-    await supabase.from('transactions').insert({
+    const { error: txErr } = await supabase.from('transactions').insert({
       wallet_id: w.id, type: 'credit', amount, description, reference,
     });
+    assertOk(txErr, 'wallet.credit:transaction');
   },
 
   /** Internal: hold funds for an order */
   async _hold(userId, amount, orderId) {
+    if (!amount || amount <= 0) throw new Error('Hold amount must be positive');
     const { data: w } = await supabase
       .from('wallets')
       .select('id, balance_ngn')
       .eq('user_id', userId)
       .single();
-    if (!w) return;
+    if (!w) throw new Error('Wallet not found — cannot hold funds');
     if (w.balance_ngn < amount) throw new Error('Insufficient wallet balance');
 
-    await supabase.from('wallets')
+    const { error: wErr } = await supabase.from('wallets')
       .update({ balance_ngn: w.balance_ngn - amount, updated_at: new Date().toISOString() })
       .eq('id', w.id);
-    await supabase.from('transactions').insert({
+    assertOk(wErr, 'wallet._hold:balance');
+    const { error: txErr } = await supabase.from('transactions').insert({
       wallet_id: w.id, type: 'hold', amount,
       description: `Order ${orderId} — Payment held in escrow`,
       order_id: orderId,
     });
+    assertOk(txErr, 'wallet._hold:transaction');
   },
 
   /** Internal: release funds after delivery */
   async _release(userId, amount, orderId) {
+    if (!amount || amount <= 0) throw new Error('Release amount must be positive');
     const { data: w } = await supabase
       .from('wallets')
       .select('id')
       .eq('user_id', userId)
       .single();
-    if (!w) return;
-    await supabase.from('transactions').insert({
+    if (!w) throw new Error('Wallet not found — cannot release funds');
+    const { error: txErr } = await supabase.from('transactions').insert({
       wallet_id: w.id, type: 'release', amount,
       description: `Order ${orderId} — Payment released to depot`,
       order_id: orderId,
     });
+    assertOk(txErr, 'wallet._release:transaction');
   },
 
   /** Internal: refund buyer on rejection/cancellation */
   async _refund(userId, amount, orderId, reason = 'cancelled') {
+    if (!amount || amount <= 0) throw new Error('Refund amount must be positive');
     const { data: w } = await supabase
       .from('wallets')
       .select('id, balance_ngn')
       .eq('user_id', userId)
       .single();
-    if (!w) return;
-    await supabase.from('wallets')
+    if (!w) throw new Error('Wallet not found — cannot refund');
+    const { error: wErr } = await supabase.from('wallets')
       .update({ balance_ngn: w.balance_ngn + amount, updated_at: new Date().toISOString() })
       .eq('id', w.id);
-    await supabase.from('transactions').insert({
-      wallet_id: w.id, type: 'credit', amount,
+    assertOk(wErr, 'wallet._refund:balance');
+    const { error: txErr } = await supabase.from('transactions').insert({
+      wallet_id: w.id, type: 'refund', amount,
       description: `Order ${orderId} — Refund (order ${reason})`,
       order_id: orderId,
     });
+    assertOk(txErr, 'wallet._refund:transaction');
   },
 };
 

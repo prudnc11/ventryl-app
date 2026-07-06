@@ -300,23 +300,35 @@ function DepotInventory({depot,onUpdateDepot,isMobile}) {
   const AVAIL=["PMS","AGO","DPK","LPG","ATK"].filter(n=>!(depot.products||[]).map(p=>p.name).includes(n));
 
   const handleAddStock=(productId,qty,ref)=>{
+    if(!qty||qty<=0) return;
     const prod=(depot.products||[]).find(p=>p.id===productId);
-    const updated=(depot.products||[]).map(p=>p.id===productId?{...p,stock:p.stock+qty}:p);
+    if(!prod) return;
+    const newStock=prod.stock+qty;
+    if(depot.capacity>0&&newStock>depot.capacity){
+      alert(`Cannot exceed depot capacity (${depot.capacity.toLocaleString()} L). Current: ${prod.stock.toLocaleString()} L`);
+      return;
+    }
+    const updated=(depot.products||[]).map(p=>p.id===productId?{...p,stock:newStock}:p);
     const hist=[{id:Date.now(),date:new Date().toLocaleDateString("en-NG"),product:prod.name,qty,type:"delivery",ref},...(depot.stockHistory||[])];
     onUpdateDepot(depot.id,{products:updated,stockHistory:hist});
   };
   const handleAdjustStock=(productId,qty,note)=>{
     const prod=(depot.products||[]).find(p=>p.id===productId);
+    if(!prod) return;
     const updated=(depot.products||[]).map(p=>p.id===productId?{...p,stock:Math.max(0,p.stock+qty)}:p);
     const hist=[{id:Date.now(),date:new Date().toLocaleDateString("en-NG"),product:prod.name,qty,type:"adjustment",ref:note||"Manual adjustment"},...(depot.stockHistory||[])];
     onUpdateDepot(depot.id,{products:updated,stockHistory:hist});
   };
   const handleUpdatePrice=(productId,price)=>{
-    const updated=(depot.products||[]).map(p=>p.id===productId?{...p,pricePerLitre:Number(price)}:p);
+    const val=Number(price);
+    if(isNaN(val)||val<0) return;
+    const updated=(depot.products||[]).map(p=>p.id===productId?{...p,pricePerLitre:val}:p);
     onUpdateDepot(depot.id,{products:updated});
   };
   const handleUpdateThreshold=(productId,threshold)=>{
-    const updated=(depot.products||[]).map(p=>p.id===productId?{...p,threshold:Number(threshold)}:p);
+    const val=Number(threshold);
+    if(isNaN(val)||val<0) return;
+    const updated=(depot.products||[]).map(p=>p.id===productId?{...p,threshold:val}:p);
     onUpdateDepot(depot.id,{products:updated});
   };
   const handleRemove=(productId)=>{
