@@ -5,6 +5,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase as sb } from '../lib/supabase';
+import { notifications } from '../lib/api';
 
 // ── Design tokens (mirror App.jsx) ────────────────────────────────────────────
 const T = {
@@ -230,6 +231,15 @@ function KycReview({ isMobile }) {
     if (error) { setErr(error.message); setActing(a => ({ ...a, [userId]: null })); return; }
     setRows(r => r.map(u => u.id === userId ? { ...u, kyc_status: updates.kyc_status } : u));
     setActing(a => ({ ...a, [userId]: null }));
+    // Send KYC notification email
+    const user = rows.find(u => u.id === userId);
+    if (user?.email) {
+      const notifType = action === 'approve' ? 'kyc_approved' : 'kyc_rejected';
+      notifications.send({
+        userId, type: notifType, channel: 'email', toEmail: user.email,
+        data: { name: user.full_name || user.company_name || '', reason: rejectReason[userId] || '' },
+      }).catch(() => {});
+    }
   };
 
   if (loading) return <Spinner />;
@@ -315,7 +325,7 @@ function KybReview({ isMobile }) {
     (async () => {
       const { data, error } = await sb
         .from('depots')
-        .select('id, name, location, state, lga, address, capacity, license_number, kyb_status, contact_name, contact_phone, contact_email, contact_role, created_at, profiles!owner_id(full_name, email)')
+        .select('id, name, owner_id, location, state, lga, address, capacity, license_number, kyb_status, contact_name, contact_phone, contact_email, contact_role, created_at, profiles!owner_id(full_name, email)')
         .order('created_at', { ascending: false });
       if (error) { setErr(error.message); setLoading(false); return; }
       setRows(data || []);
@@ -363,6 +373,20 @@ function KybReview({ isMobile }) {
     if (error) { setErr(error.message); setActing(a => ({ ...a, [depotId]: null })); return; }
     setRows(r => r.map(d => d.id === depotId ? { ...d, kyb_status: newStatus } : d));
     setActing(a => ({ ...a, [depotId]: null }));
+    // Send KYB notification email to depot owner
+    const depot = rows.find(d => d.id === depotId);
+    const ownerEmail = depot?.profiles?.email;
+    const ownerId = depot?.owner_id;
+    if (ownerEmail && ownerId) {
+      const notifType = action === 'approve' ? 'kyb_approved' : 'kyb_rejected';
+      notifications.send({
+        userId: ownerId, type: notifType, channel: 'email', toEmail: ownerEmail,
+        data: {
+          depotName: depot.name || '', contact: depot.profiles?.full_name || depot.contact_name || '',
+          reason: rejectReason[depotId] || '',
+        },
+      }).catch(() => {});
+    }
   };
 
   if (loading) return <Spinner />;
@@ -612,9 +636,18 @@ function PricingEngine({ isMobile }) {
     const { data: { session } } = await sb.auth.getSession();
     const email = session?.user?.email || '';
     otpSentTo.current = email;
-    // In production, send OTP via email. For now, we show it in an alert for testing.
-    // TODO: Replace with actual email send via Edge Function
-    window.alert(`Your OTP verification code is: ${code}\n\nSent to: ${email}\n\n(In production, this will be sent via email)`);
+    // Send OTP via email using Edge Function
+    try {
+      await notifications.send({
+        userId: session?.user?.id,
+        type: 'admin_otp',
+        channel: 'email',
+        toEmail: email,
+        data: { code, action: `Platform fee change: ${currentFee}% → ${feeInput}%` },
+      });
+    } catch (e) {
+      console.warn('[OTP] Edge Function unavailable, showing fallback:', e.message);
+    }
     setFeeStep('otp');
   };
 

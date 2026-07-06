@@ -164,6 +164,33 @@ const EVENT_TEMPLATES: Record<string, {
     sms: (d) => `Ventryl: Dispute filed on order ${d.orderId} by buyer. Ref: ${d.ref}. Login to view details.`,
   },
 
+  admin_otp: {
+    subject: () => `Ventryl Admin — OTP Verification Code`,
+    email: (d) => `
+      <p>Hi Admin,</p>
+      <p>Your one-time verification code is:</p>
+      <div style="margin:24px 0;padding:20px;background:#111;text-align:center;">
+        <span style="font-size:32px;font-weight:800;letter-spacing:0.3em;color:#06C167;">${d.code}</span>
+      </div>
+      <p style="font-size:13px;color:#666;">This code expires in <strong>5 minutes</strong>. If you did not request this, please ignore this email.</p>
+      <p style="font-size:13px;color:#666;">Action: <strong>${d.action || 'Platform settings change'}</strong></p>
+    `,
+    sms: (d) => `Ventryl Admin OTP: ${d.code}. Expires in 5 minutes. Do not share this code.`,
+  },
+
+  kyb_rejected: {
+    subject: (d) => `Action Required: Depot "${d.depotName}" KYB Verification Update`,
+    email: (d) => `
+      <p>Hi ${d.contact},</p>
+      <p>Unfortunately, your depot <strong>${d.depotName}</strong> could not be verified${d.reason ? ': <strong>' + d.reason + '</strong>' : '.'}</p>
+      <p>Please review the rejection reason and re-upload the required documents.</p>
+      <p style="margin-top:24px;"><a href="https://app.ventryl.com/depot"
+         style="background:#111;color:#fff;padding:12px 24px;text-decoration:none;font-weight:700;display:inline-block;">
+         Re-submit Documents →</a></p>
+    `,
+    sms: (d) => `Ventryl: Depot "${d.depotName}" KYB not approved. ${d.reason || 'Please resubmit documents.'} Login at ventryl.com`,
+  },
+
   team_invite: {
     subject: (d) => `You've been invited to join ${d.depotName} on Ventryl`,
     email: (d) => `
