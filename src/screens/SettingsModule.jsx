@@ -86,6 +86,17 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
   const [showVatConfirm,setShowVatConfirm]=useState(false);
   const [vatSaving,setVatSaving]=useState(false);
 
+  // Depot contact form state
+  const [depotForm,setDepotForm]=useState({
+    contact_name:depot?._raw?.contact_name||"",
+    contact_phone:depot?._raw?.contact_phone||"",
+    contact_email:depot?._raw?.contact_email||"",
+    location:depot?.location||"",
+  });
+  const [depotSaving,setDepotSaving]=useState(false);
+  const df=(k)=>depotForm[k];
+  const sd=(k)=>e=>setDepotForm(f=>({...f,[k]:e.target.value}));
+
   const {user:authUser,profile:authProfile,setProfile}=useAuthStore();
   const {walletNGN}=useVentrylStore();
   const isBuyer=portalType==="buyer";
@@ -232,6 +243,24 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
   ];
 
   const handleSave=()=>{setSaved(true);setTimeout(()=>setSaved(false),2200);};
+  const handleSaveDepotProfile=async()=>{
+    if(!depot?.id) return;
+    setDepotSaving(true);
+    try{
+      await depotsApi.update(depot.id,{
+        contact_name:depotForm.contact_name,
+        contact_phone:depotForm.contact_phone,
+        contact_email:depotForm.contact_email,
+        location:depotForm.location,
+      });
+      if(onUpdateDepot) onUpdateDepot(depot.id);
+      setSaved(true);setTimeout(()=>setSaved(false),2200);
+    }catch(e){
+      console.error("Failed to save depot profile",e);
+    }finally{
+      setDepotSaving(false);
+    }
+  };
   const SaveBtn=({label="Save Changes"})=>(
     <button onClick={handleSave} style={{background:saved?T.green:T.black,color:T.white,border:"none",padding:"12px 28px",fontSize:"13px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"44px",transition:"background 0.2s",marginTop:"6px"}}>
       {saved?"✓ Saved":label}
@@ -273,11 +302,11 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
               <div style={{fontSize:"10px",color:T.gray400,fontWeight:600,marginTop:"-8px",marginBottom:"4px"}}>Verified fields are locked. Contact your account manager to update.</div>
             </SettingsBlock>
             <SettingsBlock title="Location & Contact">
-              <FieldRow label="Address" value={depot?.location||""}/>
+              <FieldRow label="Address" value={df("location")} onChange={sd("location")}/>
               <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:"0 20px"}}>
-                <FieldRow label="Operations Contact" value={depot?._raw?.contact_name||""}/>
-                <FieldRow label="Phone" value={depot?._raw?.contact_phone||""} type="tel"/>
-                <FieldRow label="Email" value={depot?._raw?.contact_email||""} type="email"/>
+                <FieldRow label="Operations Contact" value={df("contact_name")} onChange={sd("contact_name")}/>
+                <FieldRow label="Phone" value={df("contact_phone")} onChange={sd("contact_phone")} type="tel"/>
+                <FieldRow label="Email" value={df("contact_email")} onChange={sd("contact_email")} type="email"/>
               </div>
             </SettingsBlock>
             <SettingsBlock title="Active Products">
@@ -339,7 +368,9 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
             {profileSaving?"Saving…":saved?"✓ Saved":"Save Changes"}
           </button>
         ):(
-          <SaveBtn/>
+          <button onClick={handleSaveDepotProfile} disabled={depotSaving} style={{background:saved?T.green:T.black,color:T.white,border:"none",padding:"12px 28px",fontSize:"13px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"44px",transition:"background 0.2s",marginTop:"6px",opacity:depotSaving?0.6:1}}>
+            {depotSaving?"Saving…":saved?"✓ Saved":"Save Changes"}
+          </button>
         )}
       </div>
     ),
