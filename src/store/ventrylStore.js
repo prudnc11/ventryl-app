@@ -145,6 +145,7 @@ function adaptOwnerDepot(row) {
       type: h.type,
       ref: h.reference || '',
     })),
+    _raw: row,
   };
 }
 

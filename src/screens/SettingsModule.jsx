@@ -97,6 +97,19 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
   const df=(k)=>depotForm[k];
   const sd=(k)=>e=>setDepotForm(f=>({...f,[k]:e.target.value}));
 
+  // Sync depot form when depot data loads/changes
+  useEffect(()=>{
+    if(!depot) return;
+    setDepotForm({
+      contact_name:depot._raw?.contact_name||"",
+      contact_phone:depot._raw?.contact_phone||"",
+      contact_email:depot._raw?.contact_email||"",
+      location:depot.location||"",
+    });
+    setVatInput(depot._raw?.vat_percent??7.5);
+    setBays(depot._raw?.bays||[]);
+  },[depot?.id,depot?._raw?.contact_name,depot?._raw?.contact_phone,depot?._raw?.contact_email,depot?._raw?.vat_percent]);
+
   const {user:authUser,profile:authProfile,setProfile}=useAuthStore();
   const {walletNGN}=useVentrylStore();
   const isBuyer=portalType==="buyer";

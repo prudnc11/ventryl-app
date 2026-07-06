@@ -163,6 +163,9 @@ export const depots = {
         license_expiry: licenseExpiry || null,
         capacity: capacity ? Number(capacity) : 0,
         vat_percent: vatPercent ?? 7.5,
+        contact_name: contactName || null,
+        contact_phone: contactPhone || null,
+        contact_email: contactEmail || null,
         kyb_status: 'pending',
       })
       .select()
