@@ -70,7 +70,7 @@ function PageLoader() {
 
 const CRUMB_MAP = {
   "/":            "Dashboard",
-  "/market":      "Price Discovery",
+  "/market":      "Depot Prices",
   "/orders":      "My Orders",
   "/wallet":      "Wallet",
   "/place-order": "Place Order",

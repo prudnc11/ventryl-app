@@ -26,7 +26,7 @@ function BuyerMarketplace({onOrder,isMobile}) {
   return (
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px",flexWrap:"wrap",gap:"8px"}}>
-        <div><div style={{fontSize:"14px",fontWeight:800,color:T.black}}>Price Discovery</div><div style={{fontSize:"11px",color:T.gray400,marginTop:"2px"}}>{sorted.length} depot{sorted.length!==1?"s":""} · NMDPRA verified</div></div>
+        <div><div style={{fontSize:"14px",fontWeight:800,color:T.black}}>Depot Prices</div><div style={{fontSize:"11px",color:T.gray400,marginTop:"2px"}}>{sorted.length} depot{sorted.length!==1?"s":""} · NMDPRA verified</div></div>
         <div style={{display:"flex",gap:"6px"}}>
           {["price","rating","stock"].map(s=>(
             <button key={s} onClick={()=>setSort(s)} style={{background:sort===s?T.black:T.white,color:sort===s?T.white:T.gray600,border:`1px solid ${sort===s?T.black:T.gray200}`,padding:"5px 10px",fontSize:"10px",fontWeight:700,cursor:"pointer",fontFamily:F,borderRadius:"20px",textTransform:"capitalize"}}>{s}</button>

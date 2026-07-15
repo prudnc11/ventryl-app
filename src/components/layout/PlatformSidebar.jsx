@@ -21,7 +21,7 @@ export function PlatformSidebar({ depots, onNewDepot, onPlaceOrder, identity, is
 
   const ITEMS = [
     { path: "/",            label: "Dashboard",      icon: "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" },
-    { path: "/market",      label: "Price Discovery", icon: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" },
+    { path: "/market",      label: "Depot Prices", icon: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" },
     { path: "/place-order", label: "Place Order",    icon: "M12 4v16m8-8H4" },
     { path: "/orders",      label: "My Orders",      icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
     { path: "/wallet",      label: "Wallet",         icon: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" },
