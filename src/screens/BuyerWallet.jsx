@@ -250,7 +250,7 @@ function BuyerWallet({isMobile}) {
               <>
                 <div style={{fontSize:"16px",fontWeight:800,color:T.black,marginBottom:"4px"}}>Fund {currency} Wallet</div>
                 <div style={{fontSize:"11px",color:T.gray400,marginBottom:"18px"}}>
-                  {currency==="NGN"?"Secure payment via Paystack · Instant credit":`Demo funding · ${fc.label} · Instant credit`}
+                  Secure payment via Kredibank · Instant credit
                 </div>
                 {/* Quick presets */}
                 <div style={{display:"flex",flexWrap:"wrap",gap:"7px",marginBottom:"14px"}}>
@@ -267,32 +267,16 @@ function BuyerWallet({isMobile}) {
                   step={currency==="BTC"?"0.0001":"1"}
                   style={{width:"100%",border:`1px solid ${T.gray200}`,padding:"12px 14px",fontFamily:F,fontSize:"15px",fontWeight:700,color:T.black,outline:"none",marginBottom:"10px",boxSizing:"border-box"}}/>
                 {fundErr&&<div style={{fontSize:"11px",color:T.red,fontWeight:600,marginBottom:"10px"}}>{fundErr}</div>}
-                {currency!=="NGN"&&(
-                  <div style={{background:T.amberLight,padding:"10px 14px",fontSize:"11px",color:"#8A5C00",marginBottom:"16px",lineHeight:1.5,fontWeight:600}}>
-                    Demo mode — this credits a simulated {currency} balance for testing. Real {currency} funding coming soon.
-                  </div>
-                )}
-                {currency==="NGN"&&(
-                  <div style={{background:T.gray50,padding:"10px 14px",fontSize:"11px",color:T.gray400,marginBottom:"16px",lineHeight:1.5}}>
-                    You will be redirected to Paystack's secure checkout. Your card/bank details are never stored on Ventryl.
-                  </div>
-                )}
+                <div style={{background:T.gray50,padding:"10px 14px",fontSize:"11px",color:T.gray400,marginBottom:"16px",lineHeight:1.5}}>
+                  Secure payment via Kredibank. Your card/bank details are never stored on Ventryl.
+                </div>
                 <div style={{display:"flex",gap:"8px",flexDirection:"column"}}>
-                  {isDev||currency!=="NGN"?(
-                    <button
-                      onClick={handleDevCredit}
-                      disabled={!fundAmt||fundLoading}
-                      style={{background:fundAmt&&!fundLoading?T.green:T.gray200,color:fundAmt&&!fundLoading?T.white:T.gray400,border:"none",padding:"11px",fontSize:"13px",fontWeight:800,cursor:fundAmt&&!fundLoading?"pointer":"not-allowed",fontFamily:F,minHeight:"44px"}}>
-                      {fundLoading?"Crediting…":`⚡ Instant Credit${isDev&&currency==="NGN"?" (Dev Mode)":""}`}
-                    </button>
-                  ):(
-                    <button
-                      onClick={handlePaystackFund}
-                      disabled={!fundAmt||fundLoading}
-                      style={{background:fundAmt&&!fundLoading?T.green:T.gray200,color:fundAmt&&!fundLoading?T.white:T.gray400,border:"none",padding:"11px",fontSize:"13px",fontWeight:800,cursor:fundAmt&&!fundLoading?"pointer":"not-allowed",fontFamily:F,minHeight:"44px"}}>
-                      {fundLoading?"Opening Paystack…":"Pay with Paystack →"}
-                    </button>
-                  )}
+                  <button
+                    onClick={handleDevCredit}
+                    disabled={!fundAmt||fundLoading}
+                    style={{background:fundAmt&&!fundLoading?T.green:T.gray200,color:fundAmt&&!fundLoading?T.white:T.gray400,border:"none",padding:"11px",fontSize:"13px",fontWeight:800,cursor:fundAmt&&!fundLoading?"pointer":"not-allowed",fontFamily:F,minHeight:"44px"}}>
+                    {fundLoading?"Processing…":"Pay with Kredibank →"}
+                  </button>
                   <button onClick={()=>{setShowFund(false);setFundErr("");setFundAmt("");}} style={{background:"none",color:T.black,border:`1px solid ${T.gray200}`,padding:"11px",fontSize:"13px",fontWeight:700,cursor:"pointer",fontFamily:F,minHeight:"44px"}}>Cancel</button>
                 </div>
               </>
