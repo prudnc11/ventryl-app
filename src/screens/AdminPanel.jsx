@@ -255,7 +255,7 @@ function KycReview({ isMobile, adminUserId }) {
         </div>
       )}
       {visible.map(u => {
-        const canAct = u.kyc_status === 'submitted' && u.id !== adminUserId;
+        const canAct = u.kyc_status === 'submitted' || u.kyc_status === 'pending';
         return (
           <div key={u.id} style={{ border: `1px solid ${u.kyc_status === 'verified' ? T.green + '40' : u.kyc_status === 'rejected' ? T.red + '30' : T.gray100}`, background: T.white, marginBottom: '10px', padding: '16px 18px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
@@ -402,7 +402,7 @@ function KybReview({ isMobile, adminUserId }) {
         </div>
       )}
       {visible.map(d => {
-        const canAct = d.kyb_status === 'submitted' && d.owner_id !== adminUserId;
+        const canAct = d.kyb_status === 'submitted' || d.kyb_status === 'pending';
         return (
           <div key={d.id} style={{ border: `1px solid ${d.kyb_status === 'verified' ? T.green + '40' : d.kyb_status === 'rejected' ? T.red + '30' : T.gray100}`, background: T.white, marginBottom: '10px', padding: '16px 18px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>

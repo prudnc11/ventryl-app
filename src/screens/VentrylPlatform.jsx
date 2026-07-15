@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense, Component } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense, Component } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { T, F, GLOBAL_STYLES } from "../lib/tokens";
 import { useAuthStore } from "../store/authStore";
@@ -90,6 +90,19 @@ export function VentrylPlatform({ bp, user, onSignOut }) {
 
   const [showKycGate, setShowKycGate] = useState(false);
   const [kycGateAction, setKycGateAction] = useState(""); // "order" | "depot"
+  const [adBannerDismissed, setAdBannerDismissed] = useState(false);
+  const [adSlide, setAdSlide] = useState(0);
+  const AD_SLIDES = [
+    { bg: "linear-gradient(135deg, #1a0a2e 0%, #2d1b69 50%, #1a0a2e 100%)", badge: "AD", badgeBg: "#7c3aed", headline: "Leadway Assurance", sub: "Protect your fleet, cargo & depot assets — tailored petroleum insurance for Nigerian businesses.", cta: "Get a Free Quote", ctaLink: "https://leadway.com", ctaBg: "#7c3aed", ctaColor: "#fff" },
+    { bg: "linear-gradient(135deg, #0a1a0a 0%, #0f3d0f 50%, #0a1a0a 100%)", badge: "LOANS", badgeBg: T.green, headline: "Petroleum Trade Financing", sub: "Access up to ₦500M in working capital — fast approval, competitive rates for verified buyers & depots.", cta: "Apply Now", ctaLink: "/settings", ctaBg: T.green, ctaColor: T.black, internal: true },
+    { bg: "linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 40%, #0f3460 100%)", badge: "LIVE", badgeBg: T.amber, headline: "Oil Price Alerts", sub: "Get instant SMS & email alerts when PMS, AGO or DPK prices move — never miss a buying opportunity.", cta: "Set Up Alerts", ctaLink: "/settings", ctaBg: T.amber, ctaColor: T.black, internal: true },
+    { bg: "linear-gradient(135deg, #1a0505 0%, #6b1010 50%, #1a0505 100%)", badge: "NEW", badgeBg: T.red, headline: "Depot Owners — List for Free", sub: "Reach thousands of verified petroleum buyers across Nigeria. Zero listing fees for your first 90 days.", cta: "Register Depot", ctaLink: "/depot/new", ctaBg: "#fff", ctaColor: T.red, internal: true },
+  ];
+  useEffect(() => {
+    if (adBannerDismissed) return;
+    const t = setInterval(() => setAdSlide(s => (s + 1) % AD_SLIDES.length), 5000);
+    return () => clearInterval(t);
+  }, [adBannerDismissed]);
 
   const kycApproved = authProfile?.kyc_status === "verified" || authProfile?.kyc_status === "approved";
 
@@ -238,6 +251,45 @@ export function VentrylPlatform({ bp, user, onSignOut }) {
         )}
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
           <Topbar crumb={getCrumb()} isMobile={isMobile} portalLabel="Platform" pills={pills} />
+          {!adBannerDismissed && (()=>{
+            const slide = AD_SLIDES[adSlide];
+            return (
+              <>
+                <style>{`
+                  @keyframes bannerShimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+                  @keyframes bannerSlideIn { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
+                `}</style>
+                <div style={{background:slide.bg,padding:isMobile?"12px 16px":"14px 28px",position:"relative",overflow:"hidden",transition:"background 0.6s ease"}}>
+                  <div style={{position:"absolute",inset:0,background:"linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.03) 40%, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0.03) 60%, transparent 100%)",backgroundSize:"200% 100%",animation:"bannerShimmer 4s linear infinite",pointerEvents:"none"}} />
+                  <div key={adSlide} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:isMobile?"10px":"16px",position:"relative",zIndex:1,animation:"bannerSlideIn 0.4s ease-out",flexWrap:isMobile?"wrap":"nowrap"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:isMobile?"8px":"12px",flex:1,minWidth:0}}>
+                      <span style={{background:slide.badgeBg,color:slide.badge==="LOANS"?T.black:T.white,fontSize:"8px",fontWeight:800,padding:"2px 6px",flexShrink:0,letterSpacing:"0.06em"}}>{slide.badge}</span>
+                      <div style={{minWidth:0}}>
+                        <div style={{fontSize:isMobile?"12px":"14px",fontWeight:800,color:T.white,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{slide.headline}</div>
+                        <div style={{fontSize:isMobile?"10px":"11px",color:"rgba(255,255,255,0.6)",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:"1px"}}>{slide.sub}</div>
+                      </div>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:"12px",flexShrink:0}}>
+                      {slide.internal
+                        ? <a href={slide.ctaLink} onClick={e=>{e.preventDefault();navigate(slide.ctaLink);}}
+                            style={{background:slide.ctaBg,color:slide.ctaColor,fontSize:"10px",fontWeight:800,padding:"6px 14px",textDecoration:"none",whiteSpace:"nowrap",fontFamily:F}}>{slide.cta}</a>
+                        : <a href={slide.ctaLink} target="_blank" rel="noopener noreferrer"
+                            style={{background:slide.ctaBg,color:slide.ctaColor,fontSize:"10px",fontWeight:800,padding:"6px 14px",textDecoration:"none",whiteSpace:"nowrap",fontFamily:F}}>{slide.cta}</a>
+                      }
+                    </div>
+                  </div>
+                  {/* Dot indicators */}
+                  <div style={{display:"flex",justifyContent:"center",gap:"6px",marginTop:"8px",position:"relative",zIndex:1}}>
+                    {AD_SLIDES.map((_,i)=>(
+                      <button key={i} onClick={()=>setAdSlide(i)}
+                        style={{width:adSlide===i?"16px":"6px",height:"6px",borderRadius:"3px",background:adSlide===i?"rgba(255,255,255,0.9)":"rgba(255,255,255,0.25)",border:"none",cursor:"pointer",padding:0,transition:"all 0.3s ease"}}
+                        aria-label={`Slide ${i+1}`} />
+                    ))}
+                  </div>
+                </div>
+              </>
+            );
+          })()}
           <div style={{ padding: isMobile ? "14px 16px" : "24px 28px", paddingBottom: isMobile ? "80px" : "24px", flex: 1, overflowY: "auto" }}>
             <ErrorBoundary>
               <Suspense fallback={<PageLoader />}>

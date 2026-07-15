@@ -248,42 +248,48 @@ export const orders = {
     const trucksCount = Math.ceil(totalVolume / 33000);
     const escrowTotal = totalValue + platformFee + vat;
 
-    // C2 FIX: Hold funds FIRST (atomically) before inserting order
-    const { data: held, error: holdErr } = await supabase.rpc('wallet_hold', {
-      p_user_id: buyerId,
-      p_amount: escrowTotal,
-      p_order_id: '__pending__', // placeholder — updated after order insert
-    });
-    if (holdErr) assertOk(holdErr, 'orders.create:hold');
-    if (!held) throw new Error('Insufficient wallet balance to place this order.');
-
     // Generate order ID from DB sequence; fall back to timestamp-based ID if not available
     const { data: idRow } = await supabase.rpc('next_order_id');
     const orderId = idRow || `VTL-${Date.now().toString(36).toUpperCase().slice(-5)}`;
 
     const slaDeadline = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(); // 2h SLA
 
-    try {
-      const { error: orderErr } = await supabase.from('orders').insert({
-        id: orderId,
-        buyer_id: buyerId,
-        depot_id: depotId,
-        status: 'pending',
-        delivery_mode: deliveryMode,
-        delivery_state: deliveryState || null,
-        delivery_lga: deliveryLga || null,
-        delivery_address: deliveryAddress || null,
-        pickup_note: pickupNote || null,
-        total_volume: totalVolume,
-        total_value: totalValue,
-        platform_fee: platformFee,
-        vat,
-        net_to_depot: netToDepot,
-        trucks_count: trucksCount,
-        sla_deadline: slaDeadline,
-      });
-      assertOk(orderErr, 'orders.create:order');
+    // 1. Insert order first so the FK on transactions.order_id is satisfied
+    const { error: orderErr } = await supabase.from('orders').insert({
+      id: orderId,
+      buyer_id: buyerId,
+      depot_id: depotId,
+      status: 'pending',
+      delivery_mode: deliveryMode,
+      delivery_state: deliveryState || null,
+      delivery_lga: deliveryLga || null,
+      delivery_address: deliveryAddress || null,
+      pickup_note: pickupNote || null,
+      total_volume: totalVolume,
+      total_value: totalValue,
+      platform_fee: platformFee,
+      vat,
+      net_to_depot: netToDepot,
+      trucks_count: trucksCount,
+      sla_deadline: slaDeadline,
+    });
+    assertOk(orderErr, 'orders.create:order');
 
+    try {
+      // 2. Hold funds atomically — order row exists so FK is satisfied
+      const { data: held, error: holdErr } = await supabase.rpc('wallet_hold', {
+        p_user_id: buyerId,
+        p_amount: escrowTotal,
+        p_order_id: orderId,
+      });
+      if (holdErr) assertOk(holdErr, 'orders.create:hold');
+      if (!held) {
+        // Insufficient balance — remove the order we just created
+        await supabase.from('orders').delete().eq('id', orderId);
+        throw new Error('Insufficient wallet balance to place this order.');
+      }
+
+      // 3. Insert order items
       const itemRows = items.map((i) => ({
         order_id: orderId,
         product: i.product,
@@ -294,13 +300,7 @@ export const orders = {
       const { error: itemsErr } = await supabase.from('order_items').insert(itemRows);
       assertOk(itemsErr, 'orders.create:items');
 
-      // Update the placeholder hold transaction with the real order ID
-      await supabase.from('transactions')
-        .update({ order_id: orderId, description: `Order ${orderId} — Payment held in escrow` })
-        .eq('order_id', '__pending__')
-        .eq('type', 'hold');
-
-      // Log initial status
+      // 4. Log initial status
       await supabase.from('order_status_logs').insert({
         order_id: orderId,
         from_status: null,
@@ -309,13 +309,9 @@ export const orders = {
         actor_id: buyerId,
       });
     } catch (e) {
-      // Order insert failed — refund the hold
-      await supabase.rpc('wallet_refund', {
-        p_user_id: buyerId,
-        p_amount: escrowTotal,
-        p_order_id: orderId || '__pending__',
-        p_reason: 'order_creation_failed',
-      }).catch(() => {}); // best-effort refund
+      // Hold or items insert failed — clean up the order
+      await supabase.from('order_items').delete().eq('order_id', orderId).catch(() => {});
+      await supabase.from('orders').delete().eq('id', orderId).catch(() => {});
       throw e;
     }
 
