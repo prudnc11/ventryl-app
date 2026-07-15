@@ -41,7 +41,7 @@ export function PlatformSidebar({ depots, onNewDepot, onPlaceOrder, identity, is
       { path: "/market",      label: "Market",  icon: ITEMS[1].icon },
       { path: "/place-order", label: "Order",   icon: ITEMS[2].icon },
       { path: "/orders",      label: "Orders",  icon: ITEMS[3].icon },
-      { path: "__depots__",   label: "Depots",  icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4", badge: pendingKyb || null },
+      { path: "__depots__",   label: "My Depots",  icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4", badge: pendingKyb || null },
     ];
     return (
       <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: T.black, borderTop: "1px solid #1A1A1A", display: "flex", zIndex: 100, paddingBottom: "env(safe-area-inset-bottom)" }}>

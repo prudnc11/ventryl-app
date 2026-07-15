@@ -75,12 +75,12 @@ function OrderFlow({onDone,isMobile}) {
           ["Order ID",submittedId||"—"],
           ["Depot",sel?.name],
           ["Products",enabledProducts.map(([n])=>n).join(" + ")],
-          ["Delivery Method",deliveryMode==="delivery"?"🚛 Delivery":"🏭 Self Pick-up"],
+          ["Delivery Method",deliveryMode==="delivery"?"🚛 Delivery":"🏭 Self Collection"],
           ...(deliveryMode==="delivery"?[
             ["Delivery Address",`${deliveryAddress}, ${deliveryLGA}, ${deliveryState}`],
             ["Est. Arrival",`${sel?.eta} after dispatch`],
           ]:[
-            ["Pick-up From",sel?.location],
+            ["Collection From",sel?.location],
           ]),
           ["Total Trucks",`${totalTrucks} tanker${totalTrucks!==1?"s":""}`],
           ["Total Value",`₦${totalValue.toLocaleString()}`],
@@ -242,7 +242,7 @@ function OrderFlow({onDone,isMobile}) {
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px"}}>
                 {[
                   {id:"delivery", icon:"🚛", title:"Delivery", sub:"Depot dispatches trucks to your location"},
-                  {id:"pickup",   icon:"🏭", title:"Self Pick-up", sub:"You collect from the depot with your own trucks"},
+                  {id:"pickup",   icon:"🏭", title:"Self Collection", sub:"You collect from the depot with your own trucks"},
                 ].map(opt=>{
                   const active=deliveryMode===opt.id;
                   return (
@@ -333,7 +333,7 @@ function OrderFlow({onDone,isMobile}) {
                 <div style={{border:`1px solid ${T.gray100}`,marginTop:"10px"}}>
                   <div style={{padding:"12px 14px",borderBottom:`1px solid ${T.gray100}`,display:"flex",gap:"16px",flexWrap:"wrap",background:T.gray50}}>
                     <div>
-                      <div style={{fontSize:"9px",fontWeight:700,color:T.gray400,textTransform:"uppercase",marginBottom:"2px"}}>Pick-up Location</div>
+                      <div style={{fontSize:"9px",fontWeight:700,color:T.gray400,textTransform:"uppercase",marginBottom:"2px"}}>Collection Location</div>
                       <div style={{fontSize:"13px",fontWeight:800,color:T.black}}>{sel?.location||"Depot Address"}</div>
                     </div>
                     <div>
@@ -398,14 +398,14 @@ function OrderFlow({onDone,isMobile}) {
             {[
               ["Depot",sel.name],
               ["Depot Location",sel.location],
-              ["Delivery Method",deliveryMode==="delivery"?"🚛 Delivery":"🏭 Self Pick-up"],
+              ["Delivery Method",deliveryMode==="delivery"?"🚛 Delivery":"🏭 Self Collection"],
               ...(deliveryMode==="delivery"?[
                 ["Deliver to State",deliveryState],
                 ["Deliver to LGA",deliveryLGA],
                 ["Street Address",deliveryAddress],
                 ["Est. Arrival",`${sel.eta} after dispatch`],
               ]:[
-                ["Pick-up Address",sel.location],
+                ["Collection Address",sel.location],
                 ["Your Trucks",`${totalTrucks} tanker${totalTrucks!==1?"s":""}`],
                 ...(pickupNote?[["Truck Details",pickupNote]]:[]),
               ]),
@@ -457,7 +457,7 @@ function OrderFlow({onDone,isMobile}) {
           <div style={{background:T.gray50,border:`1px solid ${T.gray100}`,padding:"11px 14px",marginBottom:"12px",display:"flex",alignItems:"center",gap:"10px"}}>
             <span style={{fontSize:"16px"}}>{deliveryMode==="delivery"?"🚛":"🏭"}</span>
             <div>
-              <div style={{fontSize:"11px",fontWeight:800,color:T.black}}>{deliveryMode==="delivery"?"Delivery selected":"Self Pick-up selected"}</div>
+              <div style={{fontSize:"11px",fontWeight:800,color:T.black}}>{deliveryMode==="delivery"?"Delivery selected":"Self Collection selected"}</div>
               <div style={{fontSize:"10px",color:T.gray400}}>{deliveryMode==="delivery"?`${totalTrucks} truck${totalTrucks!==1?"s":""} → ${deliveryLGA}, ${deliveryState}`:`You collect from ${sel.location}`}</div>
             </div>
           </div>

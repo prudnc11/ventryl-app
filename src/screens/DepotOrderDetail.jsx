@@ -537,7 +537,7 @@ function DepotOrderDetail({isMobile}) {
               <div style={{background:T.amberLight,border:`1px solid ${T.amber}`,padding:"10px 14px",marginBottom:"14px",display:"flex",gap:"10px",alignItems:"flex-start"}}>
                 <span style={{fontSize:"16px",flexShrink:0}}>⚠</span>
                 <div>
-                  <div style={{fontSize:"11px",fontWeight:800,color:"#8A5C00",marginBottom:"2px"}}>Self Pick-up Order</div>
+                  <div style={{fontSize:"11px",fontWeight:800,color:"#8A5C00",marginBottom:"2px"}}>Self Collection Order</div>
                   <div style={{fontSize:"10px",color:"#8A5C00",lineHeight:1.5}}>
                     {buyerInfo.company||raw.buyer} will dispatch their own trucks to collect this order.
                     Confirm their arrival and verify truck details before beginning loading.
@@ -855,7 +855,7 @@ function DepotOrderDetail({isMobile}) {
                 <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
                   <span style={{fontSize:"16px"}}>{isDelivery?"🚛":"🏭"}</span>
                   <div>
-                    <div style={{fontSize:"12px",fontWeight:800,color:T.black}}>{isDelivery?"Delivery Location":"Self Pick-up"}</div>
+                    <div style={{fontSize:"12px",fontWeight:800,color:T.black}}>{isDelivery?"Delivery Location":"Self Collection"}</div>
                     <div style={{fontSize:"10px",color:T.gray400,marginTop:"1px"}}>{isDelivery?"Trucks dispatch to this address":"Buyer collects from your depot"}</div>
                   </div>
                 </div>
@@ -922,7 +922,7 @@ function DepotOrderDetail({isMobile}) {
                   ]:[]),
                   ["Trucks",`${meta.trucks||raw.trucks} trucks`],
                   ["Loading Bay",bay||"Pending"],
-                  [isDelivery?"Deliver To":"Mode", isDelivery?(delivery?.lga&&delivery?.state?`${delivery.lga}, ${delivery.state}`:(buyerInfo.location||raw.location||"—")):"Self Pick-up"],
+                  [isDelivery?"Deliver To":"Mode", isDelivery?(delivery?.lga&&delivery?.state?`${delivery.lga}, ${delivery.state}`:(buyerInfo.location||raw.location||"—")):"Self Collection"],
                 ].map(([l,v])=>(
                   <div key={l}>
                     <div style={{fontSize:"10px",fontWeight:700,color:T.gray400,textTransform:"uppercase",letterSpacing:"0.04em",marginBottom:"2px"}}>{l}</div>

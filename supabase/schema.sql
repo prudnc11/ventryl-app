@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS stock_history (
   depot_id  UUID        NOT NULL REFERENCES depots(id) ON DELETE CASCADE,
   product   TEXT        NOT NULL CHECK (product IN ('PMS','AGO','DPK','LPG','ATK')),
   quantity  INTEGER     NOT NULL,  -- positive = receipt, negative = dispatch
-  type      TEXT        NOT NULL CHECK (type IN ('delivery','dispatch','adjustment')),
+  type      TEXT        NOT NULL CHECK (type IN ('delivery','dispatch','adjustment','order_deduction','order_cancelled')),
   reference TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

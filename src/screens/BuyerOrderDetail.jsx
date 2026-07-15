@@ -946,7 +946,7 @@ function BuyerOrderDetail({isMobile}) {
             <Card style={{marginBottom:"14px",padding:0,overflow:"hidden"}}>
               <div style={{padding:"10px 14px",borderBottom:`1px solid ${T.gray100}`,display:"flex",alignItems:"center",gap:"8px",background:T.gray50}}>
                 <span style={{fontSize:"14px"}}>{isDelivery?"🚛":"🏭"}</span>
-                <div style={{fontSize:"11px",fontWeight:800,color:T.black}}>{isDelivery?"Delivery Location":"Self Pick-up"}</div>
+                <div style={{fontSize:"11px",fontWeight:800,color:T.black}}>{isDelivery?"Delivery Location":"Self Collection"}</div>
                 <span style={{marginLeft:"auto",fontSize:"9px",fontWeight:800,padding:"2px 7px",background:isDelivery?T.blueLight:T.amberLight,color:isDelivery?T.blue:"#8A5C00"}}>{isDelivery?"DELIVERY":"PICK-UP"}</span>
               </div>
               {isDelivery&&delivery?.state?(
@@ -1158,7 +1158,7 @@ function BuyerOrderDetail({isMobile}) {
             <div style={{padding:"12px 16px",borderBottom:`1px solid ${T.gray100}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
                 <span style={{fontSize:"16px"}}>{isDelivery?"🚛":"🏭"}</span>
-                <div style={{fontSize:"13px",fontWeight:800,color:T.black}}>{isDelivery?"Delivery Details":"Self Pick-up"}</div>
+                <div style={{fontSize:"13px",fontWeight:800,color:T.black}}>{isDelivery?"Delivery Details":"Self Collection"}</div>
               </div>
               <span style={{fontSize:"9px",fontWeight:800,padding:"3px 8px",background:isDelivery?T.blueLight:T.amberLight,color:isDelivery?T.blue:"#8A5C00"}}>
                 {isDelivery?"DELIVERY":"PICK-UP"}
