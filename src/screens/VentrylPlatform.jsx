@@ -92,11 +92,12 @@ export function VentrylPlatform({ bp, user, onSignOut }) {
   const [kycGateAction, setKycGateAction] = useState(""); // "order" | "depot"
   const [adBannerDismissed, setAdBannerDismissed] = useState(false);
   const [adSlide, setAdSlide] = useState(0);
+  const ventrylLogo = new URL("../assets/ventryl-logo.svg", import.meta.url).href;
   const AD_SLIDES = [
-    { bg: "linear-gradient(135deg, #1a0a2e 0%, #2d1b69 50%, #1a0a2e 100%)", badge: "AD", badgeBg: "#7c3aed", headline: "Leadway Assurance", sub: "Protect your fleet, cargo & depot assets — tailored petroleum insurance for Nigerian businesses.", cta: "Get a Free Quote", ctaLink: "https://leadway.com", ctaBg: "#7c3aed", ctaColor: "#fff" },
-    { bg: "linear-gradient(135deg, #0a1a0a 0%, #0f3d0f 50%, #0a1a0a 100%)", badge: "LOANS", badgeBg: T.green, headline: "Petroleum Trade Financing", sub: "Access up to ₦500M in working capital — fast approval, competitive rates for verified buyers & depots.", cta: "Apply Now", ctaLink: "/settings", ctaBg: T.green, ctaColor: T.black, internal: true },
-    { bg: "linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 40%, #0f3460 100%)", badge: "LIVE", badgeBg: T.amber, headline: "Oil Price Alerts", sub: "Get instant SMS & email alerts when PMS, AGO or DPK prices move — never miss a buying opportunity.", cta: "Set Up Alerts", ctaLink: "/settings", ctaBg: T.amber, ctaColor: T.black, internal: true },
-    { bg: "linear-gradient(135deg, #1a0505 0%, #6b1010 50%, #1a0505 100%)", badge: "NEW", badgeBg: T.red, headline: "Depot Owners — List for Free", sub: "Reach thousands of verified petroleum buyers across Nigeria. Zero listing fees for your first 90 days.", cta: "Register Depot", ctaLink: "/depot/new", ctaBg: "#fff", ctaColor: T.red, internal: true },
+    { bg: "linear-gradient(135deg, #1a0800 0%, #4a1a00 40%, #2a0e00 100%)", headline: "Leadway Assurance", sub: "Protect your fleet, cargo & depot assets — tailored petroleum insurance for Nigerian businesses.", cta: "Get a Free Quote", ctaLink: "https://leadway.com", ctaBg: "#f15a24", ctaColor: "#fff", logo: new URL("../assets/leadway-logo.png", import.meta.url).href },
+    { bg: "linear-gradient(135deg, #0a1a0a 0%, #0f3d0f 50%, #0a1a0a 100%)", headline: "Petroleum Trade Financing", sub: "Access up to ₦500M in working capital — fast approval, competitive rates for verified buyers & depots.", cta: "Apply Now", ctaLink: "/settings", ctaBg: T.green, ctaColor: T.black, internal: true, logo: ventrylLogo },
+    { bg: "linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 40%, #0f3460 100%)", headline: "Oil Price Alerts", sub: "Get instant SMS & email alerts when PMS, AGO or DPK prices move — never miss a buying opportunity.", cta: "Set Up Alerts", ctaLink: "/settings", ctaBg: T.amber, ctaColor: T.black, internal: true, logo: ventrylLogo },
+    { bg: "linear-gradient(135deg, #1a0505 0%, #6b1010 50%, #1a0505 100%)", headline: "Depot Owners — List for Free", sub: "Reach thousands of verified petroleum buyers across Nigeria. Zero listing fees for your first 90 days.", cta: "Register Depot", ctaLink: "/depot/new", ctaBg: "#fff", ctaColor: T.red, internal: true, logo: ventrylLogo },
   ];
   useEffect(() => {
     if (adBannerDismissed) return;
@@ -263,7 +264,7 @@ export function VentrylPlatform({ bp, user, onSignOut }) {
                   <div style={{position:"absolute",inset:0,background:"linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.03) 40%, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0.03) 60%, transparent 100%)",backgroundSize:"200% 100%",animation:"bannerShimmer 4s linear infinite",pointerEvents:"none"}} />
                   <div key={adSlide} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:isMobile?"10px":"16px",position:"relative",zIndex:1,animation:"bannerSlideIn 0.4s ease-out",flexWrap:isMobile?"wrap":"nowrap"}}>
                     <div style={{display:"flex",alignItems:"center",gap:isMobile?"8px":"12px",flex:1,minWidth:0}}>
-                      <span style={{background:slide.badgeBg,color:slide.badge==="LOANS"?T.black:T.white,fontSize:"8px",fontWeight:800,padding:"2px 6px",flexShrink:0,letterSpacing:"0.06em"}}>{slide.badge}</span>
+                      {slide.logo && <img src={slide.logo} alt="" style={{height:isMobile?"24px":"32px",width:"auto",objectFit:"contain",flexShrink:0,borderRadius:"4px",background:"rgba(255,255,255,0.9)",padding:"2px"}} />}
                       <div style={{minWidth:0}}>
                         <div style={{fontSize:isMobile?"12px":"14px",fontWeight:800,color:T.white,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{slide.headline}</div>
                         <div style={{fontSize:isMobile?"10px":"11px",color:"rgba(255,255,255,0.6)",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:"1px"}}>{slide.sub}</div>

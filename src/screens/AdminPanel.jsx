@@ -320,6 +320,21 @@ function KybReview({ isMobile, adminUserId }) {
   const [expanded, setExpanded] = useState({});
   const [docs, setDocs] = useState({});
   const [loadingDocs, setLoadingDocs] = useState({});
+  const [editingName, setEditingName] = useState(null);
+  const [editNameVal, setEditNameVal] = useState('');
+  const [savingName, setSavingName] = useState(null);
+
+  const renameDepot = async (depotId) => {
+    const trimmed = editNameVal.trim();
+    if (!trimmed) return;
+    setSavingName(depotId);
+    const { error } = await sb.from('depots').update({ name: trimmed }).eq('id', depotId);
+    if (error) { setErr(error.message); setSavingName(null); return; }
+    setRows(r => r.map(d => d.id === depotId ? { ...d, name: trimmed } : d));
+    setEditingName(null);
+    setEditNameVal('');
+    setSavingName(null);
+  };
 
   useEffect(() => {
     (async () => {
@@ -408,7 +423,34 @@ function KybReview({ isMobile, adminUserId }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
               <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => toggleExpand(d.id)}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 800, color: T.black }}>{d.name}</span>
+                  {editingName === d.id ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }} onClick={e => e.stopPropagation()}>
+                      <input
+                        value={editNameVal}
+                        onChange={e => setEditNameVal(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') renameDepot(d.id); if (e.key === 'Escape') { setEditingName(null); setEditNameVal(''); } }}
+                        autoFocus
+                        style={{ fontSize: '13px', fontWeight: 800, color: T.black, border: `1px solid ${T.green}`, padding: '2px 8px', fontFamily: F, outline: 'none', width: '180px' }}
+                      />
+                      <button onClick={() => renameDepot(d.id)} disabled={!editNameVal.trim() || savingName === d.id}
+                        style={{ background: T.green, color: T.white, border: 'none', padding: '3px 8px', fontSize: '10px', fontWeight: 800, cursor: 'pointer', fontFamily: F, opacity: savingName === d.id ? 0.6 : 1 }}>
+                        {savingName === d.id ? '…' : '✓'}
+                      </button>
+                      <button onClick={() => { setEditingName(null); setEditNameVal(''); }}
+                        style={{ background: T.gray100, color: T.gray600, border: 'none', padding: '3px 8px', fontSize: '10px', fontWeight: 800, cursor: 'pointer', fontFamily: F }}>
+                        ✕
+                      </button>
+                    </span>
+                  ) : (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 800, color: T.black }}>{d.name}</span>
+                      <button onClick={e => { e.stopPropagation(); setEditingName(d.id); setEditNameVal(d.name || ''); }}
+                        title="Rename depot"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: T.gray400, padding: '0 2px', lineHeight: 1 }}>
+                        ✎
+                      </button>
+                    </span>
+                  )}
                   <Badge status={d.kyb_status} />
                 </div>
                 <div style={{ fontSize: '11px', color: T.gray400 }}>{d.location}{d.license_number ? ` · ${d.license_number}` : ''}</div>

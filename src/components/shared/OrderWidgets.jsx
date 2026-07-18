@@ -4,6 +4,7 @@ import { useAuthStore } from "../../store/authStore";
 import { useVentrylStore } from "../../store/ventrylStore";
 import { orders as ordersApi } from "../../lib/api";
 import { Badge, Card } from "./index";
+import leadwayLogo from "../../assets/leadway-logo.png";
 
 export function MarketPulseWidget({onOrder}) {
   const {marketDepots,loadMarketDepots}=useVentrylStore();
@@ -61,6 +62,25 @@ export function MarketPulseWidget({onOrder}) {
           Place Order →
         </button>
       </div>
+    </Card>
+  );
+}
+
+export function LeadwayAdCard() {
+  return (
+    <Card style={{padding:0,overflow:"hidden",marginTop:"14px"}}>
+      <a href="https://leadway.com" target="_blank" rel="noopener noreferrer"
+        style={{display:"block",background:"linear-gradient(135deg, #1a0800 0%, #4a1a00 40%, #2a0e00 100%)",padding:"14px 16px",textDecoration:"none"}}
+        onMouseEnter={e=>e.currentTarget.style.opacity="0.92"} onMouseLeave={e=>e.currentTarget.style.opacity="1"}>
+        <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+          <img src={leadwayLogo} alt="Leadway Assurance" style={{height:"32px",width:"auto",objectFit:"contain",borderRadius:"4px",background:"rgba(255,255,255,0.9)",padding:"2px",flexShrink:0}} />
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:"11px",fontWeight:800,color:"#fff",marginBottom:"2px"}}>Leadway Assurance</div>
+            <div style={{fontSize:"9px",color:"rgba(255,255,255,0.6)",fontWeight:600}}>Protect your fleet, cargo & depot assets</div>
+          </div>
+          <span style={{background:"#f15a24",color:"#fff",fontSize:"9px",fontWeight:800,padding:"5px 10px",whiteSpace:"nowrap",flexShrink:0,fontFamily:F}}>Get Quote</span>
+        </div>
+      </a>
     </Card>
   );
 }

@@ -14,7 +14,7 @@ import { printWaybill, printInvoice } from "../lib/documents";
 import { openPaystackPopup, verifyAndCreditWallet, FUND_PRESETS } from "../lib/payment";
 import { useOrderRealtime, useDepotInboxRealtime, useProfileRealtime } from "../lib/realtime";
 import { useDepotContext } from "../context/DepotContext";
-import { MarketPulseWidget, OrderInboxPanel } from "../components/shared/OrderWidgets";
+import { MarketPulseWidget, LeadwayAdCard, OrderInboxPanel } from "../components/shared/OrderWidgets";
 
 function UnifiedDash({onOrder,onDepotClick,onNewDepot,onViewOrder,isMobile}) {
   const navigate = useNavigate();
@@ -104,6 +104,7 @@ function UnifiedDash({onOrder,onDepotClick,onNewDepot,onViewOrder,isMobile}) {
           </Card>
         </div>
         <MarketPulseWidget onOrder={onOrder}/>
+        <LeadwayAdCard />
       </div>
 
     </div>
