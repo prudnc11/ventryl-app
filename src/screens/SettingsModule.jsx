@@ -374,12 +374,20 @@ function SettingsModule({portalType,isMobile,depot,onUpdateDepot}) {
           </>
         ):(
           <>
-            <SettingsBlock title="Depot Information">
+            <SettingsBlock title={depot?.locationType==="stock_point"?"Stock Point Information":"Depot Information"}>
               <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:"0 20px"}}>
-                <FieldRow label="Depot Name" value={depot?.name||""} verified editable={false}/>
-                <FieldRow label="NMDPRA License" value={depot?.license||""} verified editable={false}/>
+                <FieldRow label={depot?.locationType==="stock_point"?"Stock Point Name":"Depot Name"} value={depot?.name||""} verified editable={false}/>
+                <FieldRow label="Location Type" value={depot?.locationType==="stock_point"?"Stock Point":"Depot"} editable={false}/>
+                {depot?.locationType==="stock_point"?(
+                  <FieldRow label="Lease / Agreement Expiry" value={depot?.leaseExpiry||depot?._raw?.lease_expiry||"—"} editable={false}/>
+                ):(
+                  <>
+                    <FieldRow label="NMDPRA License" value={depot?.license||""} verified editable={false}/>
+                    <FieldRow label="License Expiry" value={depot?.licenseExpiry||depot?._raw?.license_expiry||"—"} editable={false}/>
+                  </>
+                )}
                 <FieldRow label="Total Capacity (L)" value={depot?.capacity?(depot.capacity).toLocaleString():"—"} editable={false}/>
-                <FieldRow label="License Expiry" value={depot?._raw?.license_expiry||"—"} editable={false}/>
+                <FieldRow label="Verification Status" value={(depot?.verificationStatus||"pending").replace(/^\w/,c=>c.toUpperCase())} editable={false}/>
               </div>
               <div style={{fontSize:"10px",color:T.gray400,fontWeight:600,marginTop:"-8px",marginBottom:"4px"}}>Verified fields are locked. Contact your account manager to update.</div>
             </SettingsBlock>

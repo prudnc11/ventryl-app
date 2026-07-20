@@ -473,9 +473,19 @@ function DepotDetailView({onViewOrder,isMobile}) {
       <div style={{background:T.black,padding:isMobile?"16px":"20px 24px",marginBottom:"14px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"12px",flexWrap:isMobile?"wrap":"nowrap"}}>
           <div>
-            <div style={{fontSize:"9px",fontWeight:700,color:"#555",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:"4px"}}>Depot</div>
-            <div style={{fontSize:isMobile?"18px":"22px",fontWeight:800,color:T.white}}>{depot.name}</div>
-            <div style={{fontSize:"11px",color:T.gray400,marginTop:"2px"}}>{depot.location}{depot.license?` · ${depot.license}`:""}</div>
+            <div style={{fontSize:"9px",fontWeight:700,color:"#555",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:"4px"}}>{depot.locationType==="stock_point"?"Stock Point":"Depot"}</div>
+            <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}>
+              <span style={{fontSize:isMobile?"18px":"22px",fontWeight:800,color:T.white}}>{depot.name}</span>
+              {depot.verificationStatus==="expired"&&<span style={{background:"#c0392b",color:T.white,fontSize:"9px",fontWeight:800,padding:"2px 6px"}}>VERIFICATION EXPIRED</span>}
+            </div>
+            <div style={{fontSize:"11px",color:T.gray400,marginTop:"2px"}}>
+              {depot.location}
+              {depot.locationType==="stock_point"
+                ?(depot.leaseExpiry?` · Lease expires ${depot.leaseExpiry}`:"")
+                :(depot.license?` · ${depot.license}`:"")
+              }
+              {depot.companyName&&` · ${depot.companyName}`}
+            </div>
             {(depot.products||[]).length>0&&<div style={{fontSize:"10px",color:"#666",marginTop:"4px"}}>{(depot.products||[]).map(p=>p.name).join(" · ")}</div>}
           </div>
           <div style={{display:"flex",flexDirection:"column",alignItems:isMobile?"flex-start":"flex-end",gap:"6px"}}>

@@ -41,7 +41,13 @@ function DepotKYBView({depot,isMobile}) {
     })();
   },[depot.id]);
 
-  const DOCS=[
+  const isStockPoint = depot.locationType === 'stock_point';
+  const DOCS = isStockPoint ? [
+    {key:"lease_agreement", label:"Throughput / Lease Agreement",      required:true,  hint:"Signed lease or throughput agreement for this stock point"},
+    {key:"cac_cert",        label:"CAC Registration (Form C02/C07)",   required:true,  hint:"Certificate of Incorporation from the Corporate Affairs Commission"},
+    {key:"tax_clearance",   label:"FIRS Tax Clearance Certificate",    required:true,  hint:"Tax clearance for the last 3 fiscal years"},
+    {key:"proof_of_address",label:"Utility Bill (Location Address)",   required:false, hint:"Recent bill confirming the location's physical address"},
+  ] : [
     {key:"nmdpra_license",  label:"NMDPRA License Certificate",        required:true,  hint:"Current, unexpired license from the Dept. of Petroleum Resources"},
     {key:"cac_cert",        label:"CAC Registration (Form C02/C07)",   required:true,  hint:"Certificate of Incorporation from the Corporate Affairs Commission"},
     {key:"tax_clearance",   label:"FIRS Tax Clearance Certificate",    required:true,  hint:"Tax clearance for the last 3 fiscal years"},
