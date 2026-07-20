@@ -65,7 +65,7 @@ function BuyerMarketplace({onOrder,isMobile}) {
                       <span style={{fontSize:"14px",fontWeight:800,color:T.black}}>{d.name}</span>
                       {i===0&&sort==="price"&&d.verificationStatus!=="expired"&&<span style={{background:T.greenLight,color:T.greenDark,fontSize:"9px",fontWeight:800,padding:"1px 5px"}}>BEST</span>}
                     </div>
-                    {d.companyName&&<div style={{fontSize:"10px",color:T.gray600,fontWeight:600}}>{d.companyName}</div>}
+                    {d.companyName&&<div style={{fontSize:"10px",color:T.gray600,fontWeight:600}}>{d.companyName}{d.companyWebsite&&<>{" · "}<a href={d.companyWebsite} target="_blank" rel="noopener noreferrer" style={{color:T.blue||"#2563eb",textDecoration:"none",fontWeight:700}} onClick={e=>e.stopPropagation()}>Website ↗</a></>}</div>}
                     <div style={{fontSize:"10px",color:T.gray400,marginTop:"2px"}}>{d.location} · ★{d.rating} · {d.slots} slots</div>
                     <div style={{marginTop:"4px"}}><VerificationBadge d={d}/></div>
                   </div>
@@ -97,7 +97,7 @@ function BuyerMarketplace({onOrder,isMobile}) {
                   <VerificationBadge d={d}/>
                 </div>
                 <div style={{fontSize:"11px",color:T.gray400}}>
-                  {d.companyName&&<><span style={{color:T.gray600,fontWeight:600}}>{d.companyName}</span> · </>}
+                  {d.companyName&&<><span style={{color:T.gray600,fontWeight:600}}>{d.companyName}</span>{d.companyWebsite&&<>{" "}<a href={d.companyWebsite} target="_blank" rel="noopener noreferrer" style={{color:T.blue||"#2563eb",textDecoration:"none",fontSize:"10px",fontWeight:700}} onClick={e=>e.stopPropagation()}>↗</a></>} · </>}
                   {d.location} · ★{d.rating} ({d.orders} orders) · {d.slots} slots · ETA {d.eta}
                 </div>
               </div>

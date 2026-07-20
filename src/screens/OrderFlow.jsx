@@ -146,7 +146,7 @@ function OrderFlow({onDone,isMobile}) {
                         :i===0&&<span style={{background:T.greenLight,color:T.greenDark,fontSize:"9px",fontWeight:800,padding:"2px 6px"}}>BEST PRICE</span>
                       }
                     </div>
-                    {d.companyName&&<div style={{fontSize:"10px",color:T.gray600,fontWeight:600,marginTop:"1px"}}>{d.companyName}</div>}
+                    {d.companyName&&<div style={{fontSize:"10px",color:T.gray600,fontWeight:600,marginTop:"1px"}}>{d.companyName}{d.companyWebsite&&<>{" · "}<a href={d.companyWebsite} target="_blank" rel="noopener noreferrer" style={{color:T.blue||"#2563eb",textDecoration:"none",fontWeight:700}} onClick={e=>e.stopPropagation()}>Website ↗</a></>}</div>}
                     <div style={{fontSize:"11px",color:T.gray400,marginTop:"2px"}}>{d.location} · ETA {d.eta} · ★{d.rating} · {d.slots} slots</div>
                     <div style={{display:"flex",gap:"8px",marginTop:"8px",flexWrap:"wrap"}}>
                       {[["PMS",d.pms],["AGO",d.ago],["DPK",d.dpk],["LPG",d.lpg],["ATK",d.atk]].filter(([,p])=>p).map(([name,price])=>(
