@@ -4,7 +4,7 @@
  */
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
-import { orders as ordersApi, depots as depotsApi, prices as pricesApi } from '../lib/api';
+import { orders as ordersApi, depots as depotsApi, prices as pricesApi, companies as companiesApi } from '../lib/api';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -46,6 +46,15 @@ function slaLeft(iso) {
   const ms = new Date(iso).getTime() - Date.now();
   if (ms <= 0) return 'Expired';
   return `${Math.floor(ms / 3600000)}h ${Math.floor((ms % 3600000) / 60000)}m`;
+}
+
+/** Compute effective verification status from DB fields + expiry date */
+function computeVerificationStatus(row) {
+  const type = row.location_type || 'depot';
+  const expiry = type === 'stock_point' ? row.lease_expiry : row.license_expiry;
+  const dbStatus = row.verification_status || 'pending';
+  if (dbStatus === 'active' && expiry && new Date(expiry) < new Date()) return 'expired';
+  return dbStatus;
 }
 
 // ── Adapters ─────────────────────────────────────────────────────────────────
@@ -98,10 +107,16 @@ function adaptMarketDepot(row) {
   const prods = row.depot_products || [];
   const getPrice = (p) => prods.find(x => x.product === p && x.is_active !== false)?.price_per_litre ?? null;
   const totalStock = prods.reduce((s, p) => s + (p.stock || 0), 0);
+  const company = row.companies || null;
   return {
     id: row.id,
     name: row.name,
     location: row.location || `${row.lga || ''}, ${row.state || ''}`.replace(/^, /, ''),
+    locationType: row.location_type || 'depot',
+    verificationStatus: computeVerificationStatus(row),
+    companyName: company?.name || null,
+    companyLogo: company?.logo_url || null,
+    companyWebsite: company?.website || null,
     pms: getPrice('PMS'),
     ago: getPrice('AGO'),
     dpk: getPrice('DPK'),
@@ -118,13 +133,21 @@ function adaptMarketDepot(row) {
 
 /** DB owner depot row → VentrylPlatform depots shape */
 function adaptOwnerDepot(row) {
+  const company = row.companies || null;
   return {
     id: row.id,
     name: row.name,
     location: row.location || `${row.lga || ''}, ${row.state || ''}`.replace(/^, /, ''),
+    locationType: row.location_type || 'depot',
+    verificationStatus: computeVerificationStatus(row),
+    companyId: row.company_id || null,
+    companyName: company?.name || null,
+    companyLogo: company?.logo_url || null,
     kyb: row.kyb_status || 'pending',
     kybRejectionReason: row.kyb_rejection_reason || null,
     license: row.license_number || '',
+    licenseExpiry: row.license_expiry || null,
+    leaseExpiry: row.lease_expiry || null,
     capacity: row.capacity || 0,
     orders: row.total_orders || 0,
     rating: row.rating || 0,
@@ -289,6 +312,21 @@ function adaptOrderDetail(row) {
 
 export const useVentrylStore = create((set, get) => ({
 
+  // ── Company (owner's company record) ────────────────────────────────────────
+  ownerCompany: null,
+  ownerCompanyLoaded: false,
+
+  async loadOwnerCompany(ownerId) {
+    if (!ownerId) return;
+    try {
+      const data = await companiesApi.getByOwner(ownerId);
+      set({ ownerCompany: data, ownerCompanyLoaded: true });
+    } catch (e) {
+      console.error('[ventrylStore] loadOwnerCompany', e.message);
+      set({ ownerCompanyLoaded: true });
+    }
+  },
+
   // ── Market depots (buyer marketplace) ──────────────────────────────────────
   marketDepots: [],
   marketDepotsLoaded: false,
@@ -416,6 +454,7 @@ export const useVentrylStore = create((set, get) => ({
   // Reset all store data (call on sign-out to prevent data leaks between accounts)
   reset() {
     set({
+      ownerCompany: null, ownerCompanyLoaded: false,
       marketDepots: [], marketDepotsLoaded: false,
       ownerDepots: [], ownerDepotsLoaded: false,
       buyerOrders: [], buyerOrdersLoaded: false, buyerOrdersHasMore: true,

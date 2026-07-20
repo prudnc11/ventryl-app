@@ -23,10 +23,26 @@ function BuyerMarketplace({onOrder,isMobile}) {
   const hasAnyPrice=d=>d.pms!=null||d.ago!=null||d.dpk!=null||d.lpg!=null||d.atk!=null;
   const lowestPrice=d=>Math.min(...[d.pms,d.ago,d.dpk,d.lpg,d.atk].filter(v=>v!=null));
   const sorted=[...source].filter(hasAnyPrice).sort((a,b)=>sort==="price"?lowestPrice(a)-lowestPrice(b):sort==="rating"?b.rating-a.rating:b.stock-a.stock);
+
+  const VerificationBadge=({d})=>{
+    if(d.verificationStatus==="expired") return <span style={{background:"#FEF2F2",color:"#c0392b",fontSize:"9px",fontWeight:800,padding:"2px 6px"}}>VERIFICATION EXPIRED</span>;
+    if(d.locationType==="stock_point") return <span style={{background:T.greenLight,color:T.greenDark,fontSize:"9px",fontWeight:700,padding:"2px 6px"}}>STOCK POINT ✓</span>;
+    return <span style={{background:T.greenLight,color:T.greenDark,fontSize:"9px",fontWeight:700,padding:"2px 6px"}}>NMDPRA ✓</span>;
+  };
+
+  const OrderButton=({d,style:s})=>{
+    if(d.verificationStatus==="expired") return(
+      <div style={{...s,background:"#FEF2F2",color:"#c0392b",border:"1px solid #fca5a5",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"11px",fontWeight:800,fontFamily:F,cursor:"not-allowed"}}>
+        Verification Expired
+      </div>
+    );
+    return <button onClick={onOrder} style={{...s,background:T.black,color:T.white,border:"none",cursor:"pointer",fontFamily:F}}>Order →</button>;
+  };
+
   return (
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px",flexWrap:"wrap",gap:"8px"}}>
-        <div><div style={{fontSize:"14px",fontWeight:800,color:T.black}}>Depot Prices</div><div style={{fontSize:"11px",color:T.gray400,marginTop:"2px"}}>{sorted.length} depot{sorted.length!==1?"s":""} · NMDPRA verified</div></div>
+        <div><div style={{fontSize:"14px",fontWeight:800,color:T.black}}>Depot Prices</div><div style={{fontSize:"11px",color:T.gray400,marginTop:"2px"}}>{sorted.length} location{sorted.length!==1?"s":""} · verified</div></div>
         <div style={{display:"flex",gap:"6px"}}>
           {["price","rating","stock"].map(s=>(
             <button key={s} onClick={()=>setSort(s)} style={{background:sort===s?T.black:T.white,color:sort===s?T.white:T.gray600,border:`1px solid ${sort===s?T.black:T.gray200}`,padding:"5px 10px",fontSize:"10px",fontWeight:700,cursor:"pointer",fontFamily:F,borderRadius:"20px",textTransform:"capitalize"}}>{s}</button>
@@ -34,18 +50,24 @@ function BuyerMarketplace({onOrder,isMobile}) {
         </div>
       </div>
       {sorted.map((d,i)=>(
-        <div key={d.id} style={{border:`1px solid ${T.gray100}`,background:T.white,padding:"16px",marginBottom:"10px"}}>
+        <div key={d.id} style={{border:`1px solid ${d.verificationStatus==="expired"?"#fca5a5":T.gray100}`,background:T.white,padding:"16px",marginBottom:"10px",opacity:d.verificationStatus==="expired"?0.75:1}}>
           {isMobile?(
             <>
               <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:"10px",gap:"10px"}}>
                 <div style={{display:"flex",alignItems:"flex-start",gap:"10px"}}>
-                  <div style={{width:"30px",height:"30px",background:i===0&&sort==="price"?T.green:T.gray100,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"12px",fontWeight:800,color:i===0&&sort==="price"?T.white:T.gray600,flexShrink:0}}>{i+1}</div>
+                  {d.companyLogo?(
+                    <img src={d.companyLogo} alt="" style={{width:"30px",height:"30px",objectFit:"contain",borderRadius:"4px",background:T.gray100,flexShrink:0}}/>
+                  ):(
+                    <div style={{width:"30px",height:"30px",background:i===0&&sort==="price"?T.green:T.gray100,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"12px",fontWeight:800,color:i===0&&sort==="price"?T.white:T.gray600,flexShrink:0}}>{i+1}</div>
+                  )}
                   <div>
                     <div style={{display:"flex",alignItems:"center",gap:"6px",flexWrap:"wrap"}}>
                       <span style={{fontSize:"14px",fontWeight:800,color:T.black}}>{d.name}</span>
-                      {i===0&&sort==="price"&&<span style={{background:T.greenLight,color:T.greenDark,fontSize:"9px",fontWeight:800,padding:"1px 5px"}}>BEST</span>}
+                      {i===0&&sort==="price"&&d.verificationStatus!=="expired"&&<span style={{background:T.greenLight,color:T.greenDark,fontSize:"9px",fontWeight:800,padding:"1px 5px"}}>BEST</span>}
                     </div>
+                    {d.companyName&&<div style={{fontSize:"10px",color:T.gray600,fontWeight:600}}>{d.companyName}</div>}
                     <div style={{fontSize:"10px",color:T.gray400,marginTop:"2px"}}>{d.location} · ★{d.rating} · {d.slots} slots</div>
+                    <div style={{marginTop:"4px"}}><VerificationBadge d={d}/></div>
                   </div>
                 </div>
                 <div style={{textAlign:"right",flexShrink:0}}>
@@ -59,18 +81,25 @@ function BuyerMarketplace({onOrder,isMobile}) {
                   <div style={{fontSize:"9px",fontWeight:700,color:T.gray400,textTransform:"uppercase",marginBottom:"3px"}}>Stock: {(d.stock/1000).toFixed(0)}k/{(d.cap/1000).toFixed(0)}k MT</div>
                   <div style={{height:"4px",background:T.gray100,borderRadius:"2px",overflow:"hidden"}}><div style={{height:"100%",width:`${Math.round(d.stock/d.cap*100)}%`,background:T.green}}/></div>
                 </div>
-                <button onClick={onOrder} style={{background:T.black,color:T.white,border:"none",padding:"9px 16px",fontSize:"12px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"40px",flexShrink:0}}>Order →</button>
+                <OrderButton d={d} style={{padding:"9px 16px",fontSize:"12px",fontWeight:800,minHeight:"40px",flexShrink:0}}/>
               </div>
             </>
           ):(
             <div style={{display:"flex",alignItems:"center",gap:"16px"}}>
-              <div style={{width:"36px",height:"36px",background:i===0&&sort==="price"?T.green:T.gray100,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"13px",fontWeight:800,color:i===0&&sort==="price"?T.white:T.gray600,flexShrink:0}}>{i+1}</div>
+              {d.companyLogo?(
+                <img src={d.companyLogo} alt="" style={{width:"36px",height:"36px",objectFit:"contain",borderRadius:"4px",background:T.gray100,flexShrink:0}}/>
+              ):(
+                <div style={{width:"36px",height:"36px",background:i===0&&sort==="price"?T.green:T.gray100,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"13px",fontWeight:800,color:i===0&&sort==="price"?T.white:T.gray600,flexShrink:0}}>{i+1}</div>
+              )}
               <div style={{flex:1}}>
                 <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"3px"}}>
                   <span style={{fontSize:"14px",fontWeight:800,color:T.black}}>{d.name}</span>
-                  <span style={{background:T.greenLight,color:T.greenDark,fontSize:"9px",fontWeight:700,padding:"2px 6px"}}>NMDPRA ✓</span>
+                  <VerificationBadge d={d}/>
                 </div>
-                <div style={{fontSize:"11px",color:T.gray400}}>{d.location} · ★{d.rating} ({d.orders} orders) · {d.slots} slots · ETA {d.eta}</div>
+                <div style={{fontSize:"11px",color:T.gray400}}>
+                  {d.companyName&&<><span style={{color:T.gray600,fontWeight:600}}>{d.companyName}</span> · </>}
+                  {d.location} · ★{d.rating} ({d.orders} orders) · {d.slots} slots · ETA {d.eta}
+                </div>
               </div>
               <div style={{display:"flex",gap:"16px",alignItems:"center"}}>
                 {[["PMS",d.pms],["AGO",d.ago],["DPK",d.dpk],["LPG",d.lpg],["ATK",d.atk]].filter(([,v])=>v!=null).map(([label,price])=>(
@@ -81,7 +110,7 @@ function BuyerMarketplace({onOrder,isMobile}) {
                   <div style={{height:"4px",background:T.gray100,borderRadius:"2px",overflow:"hidden",width:"70px"}}><div style={{height:"100%",width:`${Math.round(d.stock/d.cap*100)}%`,background:T.green}}/></div>
                   <div style={{fontSize:"9px",color:T.gray400,marginTop:"2px"}}>{(d.stock/1000).toFixed(0)}k/{(d.cap/1000).toFixed(0)}k MT</div>
                 </div>
-                <button onClick={onOrder} style={{background:T.black,color:T.white,border:"none",padding:"9px 16px",fontSize:"12px",fontWeight:800,cursor:"pointer",fontFamily:F,minHeight:"40px"}}>Order →</button>
+                <OrderButton d={d} style={{padding:"9px 16px",fontSize:"12px",fontWeight:800,minHeight:"40px"}}/>
               </div>
             </div>
           )}

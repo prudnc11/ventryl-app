@@ -97,16 +97,86 @@ export const profiles = {
   },
 };
 
+// ── Companies ────────────────────────────────────────────────────────────────
+
+export const companies = {
+  /** Get the company owned by a user (one user → one company) */
+  async getByOwner(ownerId) {
+    const { data, error } = await supabase
+      .from('companies')
+      .select('*')
+      .eq('owner_id', ownerId)
+      .maybeSingle();
+    assertOk(error, 'companies.getByOwner');
+    return data;
+  },
+
+  /** Create a new company with optional logo upload */
+  async create({ ownerId, name, website, logoFile }) {
+    let logoUrl = null;
+    if (logoFile) {
+      logoUrl = await companies._uploadLogo(ownerId, logoFile);
+    }
+    const { data, error } = await supabase
+      .from('companies')
+      .insert({ owner_id: ownerId, name, website: website || null, logo_url: logoUrl })
+      .select()
+      .single();
+    assertOk(error, 'companies.create');
+    return data;
+  },
+
+  /** Update company details */
+  async update(companyId, { name, website, logoFile, ownerId }) {
+    const patch = { updated_at: new Date().toISOString() };
+    if (name !== undefined) patch.name = name;
+    if (website !== undefined) patch.website = website || null;
+    if (logoFile && ownerId) {
+      patch.logo_url = await companies._uploadLogo(ownerId, logoFile);
+    }
+    const { data, error } = await supabase
+      .from('companies')
+      .update(patch)
+      .eq('id', companyId)
+      .select()
+      .single();
+    assertOk(error, 'companies.update');
+    return data;
+  },
+
+  /** Upload company logo to Supabase Storage */
+  async _uploadLogo(ownerId, file) {
+    const MAX_SIZE = 2 * 1024 * 1024; // 2MB
+    const ALLOWED = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'];
+    if (!ALLOWED.includes(file.type)) {
+      throw new Error('Logo must be a JPG, PNG, WebP, or SVG image.');
+    }
+    if (file.size > MAX_SIZE) {
+      throw new Error('Logo must be under 2MB.');
+    }
+    const compressed = await compressImage(file);
+    const ext = compressed.name.split('.').pop().toLowerCase();
+    const path = `${ownerId}/logo-${Date.now()}.${ext}`;
+    const { error } = await supabase.storage
+      .from('company-logos')
+      .upload(path, compressed, { upsert: true, contentType: compressed.type });
+    assertOk(error, 'companies._uploadLogo');
+    const { data: urlData } = supabase.storage.from('company-logos').getPublicUrl(path);
+    return urlData.publicUrl;
+  },
+};
+
 // ── Depots ───────────────────────────────────────────────────────────────────
 
 export const depots = {
-  /** Get all active verified depots for the marketplace */
+  /** Get all active verified depots for the marketplace (includes expired verification) */
   async list() {
     const { data, error } = await supabase
       .from('depots')
       .select(`
         *,
-        depot_products (product, price_per_litre, stock, threshold, is_active)
+        depot_products (product, price_per_litre, stock, threshold, is_active),
+        companies (id, name, logo_url, website)
       `)
       .eq('is_active', true)
       .eq('kyb_status', 'verified')
@@ -122,7 +192,8 @@ export const depots = {
       .select(`
         *,
         depot_products (id, product, price_per_litre, stock, threshold, is_active),
-        stock_history (id, product, quantity, type, reference, created_at)
+        stock_history (id, product, quantity, type, reference, created_at),
+        companies (id, name, logo_url, website)
       `)
       .eq('owner_id', ownerId)
       .order('created_at', { ascending: false });
@@ -149,30 +220,65 @@ export const depots = {
    * Create a new depot. Caller must have kyc_status = 'verified' on their
    * profile before invoking — the depot itself starts with kyb_status = 'pending'.
    */
-  async create({ ownerId, name, location, state, lga, address, licenseNumber, licenseExpiry, capacity, products, vatPercent, contactName, contactPhone, contactEmail, contactRole }) {
+  async create({ ownerId, companyId, name, location, state, lga, address, locationType, licenseNumber, licenseExpiry, leaseAgreementUrl, leaseExpiry, capacity, products, vatPercent, contactName, contactPhone, contactEmail, contactRole }) {
+    const type = locationType || 'depot';
+    const verificationStatus = 'pending';
+
+    const row = {
+      owner_id: ownerId,
+      company_id: companyId || null,
+      name,
+      location,
+      state,
+      lga,
+      address,
+      location_type: type,
+      verification_status: verificationStatus,
+      license_number: type === 'depot' ? (licenseNumber || null) : null,
+      license_expiry: type === 'depot' ? (licenseExpiry || null) : null,
+      lease_agreement_url: type === 'stock_point' ? (leaseAgreementUrl || null) : null,
+      lease_expiry: type === 'stock_point' ? (leaseExpiry || null) : null,
+      capacity: capacity ? Number(capacity) : 0,
+      vat_percent: vatPercent ?? 7.5,
+      contact_name: contactName || null,
+      contact_phone: contactPhone || null,
+      contact_email: contactEmail || null,
+      kyb_status: 'pending',
+    };
+
     const { data: depot, error: depotErr } = await supabase
       .from('depots')
-      .insert({
-        owner_id: ownerId,
-        name,
-        location,
-        state,
-        lga,
-        address,
-        license_number: licenseNumber,
-        license_expiry: licenseExpiry || null,
-        capacity: capacity ? Number(capacity) : 0,
-        vat_percent: vatPercent ?? 7.5,
-        contact_name: contactName || null,
-        contact_phone: contactPhone || null,
-        contact_email: contactEmail || null,
-        kyb_status: 'pending',
-      })
+      .insert(row)
       .select()
       .single();
     assertOk(depotErr, 'depots.create');
 
     return depot;
+  },
+
+  /** Upload a lease agreement document for a Stock Point */
+  async uploadLeaseAgreement(depotId, ownerId, file) {
+    const compressed = await compressImage(file);
+    const ext = compressed.name.split('.').pop().toLowerCase();
+    const path = `${ownerId}/${depotId}/lease-${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from('kyb-documents')
+      .upload(path, compressed, { upsert: true, contentType: compressed.type });
+    assertOk(upErr, 'depots.uploadLeaseAgreement:storage');
+    return path;
+  },
+
+  /**
+   * Stub: Verify NMDPRA license against the NMDPRA API.
+   * TODO: Replace with real NMDPRA API integration when available.
+   * Expected endpoint: POST https://api.nmdpra.gov.ng/v1/license/verify
+   * Request: { license_number, expiry_date }
+   * Response: { valid: boolean, holder: string, expiry: string }
+   */
+  async verifyNmdpraLicense(licenseNumber, expiryDate) {
+    // ── STUB: always returns valid for now ──
+    console.info('[NMDPRA STUB] Would verify:', { licenseNumber, expiryDate });
+    return { valid: true, holder: null, expiry: expiryDate };
   },
 
   /** Update depot metadata */
@@ -236,6 +342,21 @@ export const orders = {
    * items: [{ product, volume, pricePerLitre }]
    */
   async create({ buyerId, depotId, deliveryMode, deliveryState, deliveryLga, deliveryAddress, pickupNote, items, vatPercent }) {
+    // Block orders on depots with expired verification
+    const { data: depotRow, error: depotErr } = await supabase
+      .from('depots')
+      .select('verification_status, location_type, license_expiry, lease_expiry')
+      .eq('id', depotId)
+      .single();
+    if (depotErr) assertOk(depotErr, 'orders.create:depotCheck');
+    if (depotRow) {
+      const expiry = depotRow.location_type === 'stock_point' ? depotRow.lease_expiry : depotRow.license_expiry;
+      const isExpired = depotRow.verification_status === 'expired' || (expiry && new Date(expiry) < new Date());
+      if (isExpired) {
+        throw new Error('This location\'s verification has expired. Orders cannot be placed until verification is renewed.');
+      }
+    }
+
     const totalVolume = items.reduce((s, i) => s + i.volume, 0);
     const totalValue = Math.round(items.reduce((s, i) => s + i.pricePerLitre * i.volume, 0));
     // Fetch platform fee percentage from DB (fallback to 1%)

@@ -133,12 +133,20 @@ function OrderFlow({onDone,isMobile}) {
               onMouseLeave={e=>{if(sel?.id!==d.id)e.currentTarget.style.borderColor=T.gray100}}>
               <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:"12px"}}>
                 <div style={{display:"flex",alignItems:"flex-start",gap:"12px"}}>
-                  <div style={{width:"30px",height:"30px",background:i===0?T.green:T.gray100,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"12px",fontWeight:800,color:i===0?T.white:T.gray600,flexShrink:0,marginTop:"2px"}}>{i+1}</div>
+                  {d.companyLogo?(
+                    <img src={d.companyLogo} alt="" style={{width:"30px",height:"30px",objectFit:"contain",borderRadius:"4px",background:T.gray100,flexShrink:0,marginTop:"2px"}}/>
+                  ):(
+                    <div style={{width:"30px",height:"30px",background:i===0?T.green:T.gray100,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"12px",fontWeight:800,color:i===0?T.white:T.gray600,flexShrink:0,marginTop:"2px"}}>{i+1}</div>
+                  )}
                   <div>
                     <div style={{display:"flex",alignItems:"center",gap:"6px",flexWrap:"wrap"}}>
                       <span style={{fontSize:"14px",fontWeight:800,color:T.black}}>{d.name}</span>
-                      {i===0&&<span style={{background:T.greenLight,color:T.greenDark,fontSize:"9px",fontWeight:800,padding:"2px 6px"}}>BEST PRICE</span>}
+                      {d.verificationStatus==="expired"
+                        ?<span style={{background:"#FEF2F2",color:"#c0392b",fontSize:"9px",fontWeight:800,padding:"2px 6px"}}>EXPIRED</span>
+                        :i===0&&<span style={{background:T.greenLight,color:T.greenDark,fontSize:"9px",fontWeight:800,padding:"2px 6px"}}>BEST PRICE</span>
+                      }
                     </div>
+                    {d.companyName&&<div style={{fontSize:"10px",color:T.gray600,fontWeight:600,marginTop:"1px"}}>{d.companyName}</div>}
                     <div style={{fontSize:"11px",color:T.gray400,marginTop:"2px"}}>{d.location} · ETA {d.eta} · ★{d.rating} · {d.slots} slots</div>
                     <div style={{display:"flex",gap:"8px",marginTop:"8px",flexWrap:"wrap"}}>
                       {[["PMS",d.pms],["AGO",d.ago],["DPK",d.dpk],["LPG",d.lpg],["ATK",d.atk]].filter(([,p])=>p).map(([name,price])=>(
@@ -462,8 +470,14 @@ function OrderFlow({onDone,isMobile}) {
             </div>
           </div>
           {submitError&&<div style={{background:T.redLight,border:`1px solid ${T.red}`,padding:"10px 14px",marginBottom:"10px",fontSize:"12px",color:T.red,fontWeight:700}}>{submitError}</div>}
+          {sel?.verificationStatus==="expired"&&(
+            <div style={{background:"#FEF2F2",border:"1px solid #fca5a5",padding:"12px 14px",marginBottom:"10px",fontSize:"12px",color:"#c0392b",fontWeight:700}}>
+              This location's verification has expired. Orders cannot be placed until the {sel?.locationType==="stock_point"?"lease agreement":"NMDPRA license"} is renewed.
+            </div>
+          )}
           <button onClick={async()=>{
             if(!authUser?.id){setSubmitError("You must be logged in to place an order.");return;}
+            if(sel?.verificationStatus==="expired"){setSubmitError("Cannot place order — verification expired.");return;}
             setSubmitting(true);setSubmitError(null);
             try{
               const orderId=await ordersApi.create({
@@ -481,8 +495,8 @@ function OrderFlow({onDone,isMobile}) {
               setDone(true);
             }catch(e){setSubmitError(e.message);}
             finally{setSubmitting(false);}
-          }} disabled={submitting} style={{background:submitting?T.gray200:T.green,color:submitting?T.gray400:T.white,border:"none",padding:"14px",fontSize:"14px",fontWeight:800,cursor:submitting?"not-allowed":"pointer",fontFamily:F,width:"100%",minHeight:"48px"}}>
-            {submitting?"Placing Order…":`Confirm & Pay ₦${totalValue.toLocaleString()}`}
+          }} disabled={submitting||sel?.verificationStatus==="expired"} style={{background:submitting||sel?.verificationStatus==="expired"?T.gray200:T.green,color:submitting||sel?.verificationStatus==="expired"?T.gray400:T.white,border:"none",padding:"14px",fontSize:"14px",fontWeight:800,cursor:submitting||sel?.verificationStatus==="expired"?"not-allowed":"pointer",fontFamily:F,width:"100%",minHeight:"48px"}}>
+            {sel?.verificationStatus==="expired"?"Verification Expired":submitting?"Placing Order…":`Confirm & Pay ₦${totalValue.toLocaleString()}`}
           </button>
         </div>
       )}

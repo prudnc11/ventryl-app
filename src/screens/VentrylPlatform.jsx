@@ -132,9 +132,14 @@ export function VentrylPlatform({ bp, user, onSignOut }) {
 
   const handleCreateDepot = async (form) => {
     const created = await depotsApi.create({
-      ownerId: authUser.id, name: form.name, location: form.location,
+      ownerId: authUser.id, companyId: form.companyId || null,
+      name: form.name, location: form.location,
       state: form.state, lga: form.lga || form.location, address: form.address,
-      licenseNumber: form.license, licenseExpiry: form.expiry,
+      locationType: form.locationType || 'depot',
+      licenseNumber: form.locationType === 'depot' ? form.license : null,
+      licenseExpiry: form.locationType === 'depot' ? form.expiry : null,
+      leaseAgreementUrl: form.leaseAgreementUrl || null,
+      leaseExpiry: form.locationType === 'stock_point' ? form.leaseExpiry : null,
       capacity: Number(form.capacity) || 0, products: form.products,
       vatPercent: parseFloat(form.vatPercent) || 7.5,
       contactName: form.contactName, contactPhone: form.contactPhone,
@@ -142,6 +147,7 @@ export function VentrylPlatform({ bp, user, onSignOut }) {
     });
     const optimistic = {
       id: created.id, name: form.name, location: form.location, kyb: "pending",
+      locationType: form.locationType || 'depot', verificationStatus: 'pending',
       license: form.license, capacity: Number(form.capacity) || 0,
       products: form.products.map(n => ({ id: n.toLowerCase() + "_" + created.id, name: n, pricePerLitre: 0, stock: 0, threshold: 5000 })),
       stockHistory: [],
