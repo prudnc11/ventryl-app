@@ -324,6 +324,27 @@ function KybReview({ isMobile, adminUserId }) {
   const [editNameVal, setEditNameVal] = useState('');
   const [savingName, setSavingName] = useState(null);
 
+  const [deleting, setDeleting] = useState({});
+  const [confirmDelete, setConfirmDelete] = useState(null);
+
+  const deleteDepot = async (depotId) => {
+    setDeleting(d => ({ ...d, [depotId]: true }));
+    setErr('');
+    // Delete related records first, then the depot
+    const ops = [
+      sb.from('depot_products').delete().eq('depot_id', depotId),
+      sb.from('stock_history').delete().eq('depot_id', depotId),
+      sb.from('kyb_documents').delete().eq('depot_id', depotId),
+      sb.from('depot_members').delete().eq('depot_id', depotId),
+    ];
+    await Promise.all(ops);
+    const { error } = await sb.from('depots').delete().eq('id', depotId);
+    if (error) { setErr(error.message); setDeleting(d => ({ ...d, [depotId]: false })); return; }
+    setRows(r => r.filter(d => d.id !== depotId));
+    setDeleting(d => ({ ...d, [depotId]: false }));
+    setConfirmDelete(null);
+  };
+
   const renameDepot = async (depotId) => {
     const trimmed = editNameVal.trim();
     if (!trimmed) return;
@@ -461,20 +482,46 @@ function KybReview({ isMobile, adminUserId }) {
                   {expanded[d.id] ? '▲ Hide details' : '▼ View KYB info & documents'}
                 </div>
               </div>
-              {canAct && (
-                <div style={{ display: 'flex', gap: '7px', flexShrink: 0 }}>
-                  <button onClick={() => setShowReject(s => ({ ...s, [d.id]: !s[d.id] }))}
-                    style={{ background: T.white, color: T.red, border: `1px solid ${T.red}`, padding: '7px 14px', fontSize: '11px', fontWeight: 800, cursor: 'pointer', fontFamily: F }}>
-                    Reject
+              <div style={{ display: 'flex', gap: '7px', flexShrink: 0, flexWrap: 'wrap' }}>
+                {canAct && (
+                  <>
+                    <button onClick={() => setShowReject(s => ({ ...s, [d.id]: !s[d.id] }))}
+                      style={{ background: T.white, color: T.red, border: `1px solid ${T.red}`, padding: '7px 14px', fontSize: '11px', fontWeight: 800, cursor: 'pointer', fontFamily: F }}>
+                      Reject
+                    </button>
+                    <button onClick={() => act(d.id, 'approve')}
+                      disabled={!!acting[d.id]}
+                      style={{ background: T.green, color: T.white, border: 'none', padding: '7px 14px', fontSize: '11px', fontWeight: 800, cursor: 'pointer', fontFamily: F, opacity: acting[d.id] ? 0.6 : 1 }}>
+                      {acting[d.id] === 'approve' ? 'Approving…' : 'Approve ✓'}
+                    </button>
+                  </>
+                )}
+                <button onClick={() => setConfirmDelete(confirmDelete === d.id ? null : d.id)}
+                  disabled={!!deleting[d.id]}
+                  style={{ background: T.white, color: T.gray400, border: `1px solid ${T.gray200}`, padding: '7px 14px', fontSize: '11px', fontWeight: 800, cursor: 'pointer', fontFamily: F, opacity: deleting[d.id] ? 0.6 : 1 }}>
+                  {deleting[d.id] ? 'Deleting…' : 'Delete'}
+                </button>
+              </div>
+            </div>
+            {confirmDelete === d.id && (
+              <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${T.red}` }}>
+                <div style={{ background: T.redLight, border: `1px solid ${T.red}`, padding: '12px 14px', marginBottom: '10px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 800, color: T.red, marginBottom: '4px' }}>Delete "{d.name}"?</div>
+                  <div style={{ fontSize: '11px', color: T.red, opacity: 0.8 }}>This will permanently remove the depot and all associated products, stock history, KYB documents, and team members. This action cannot be undone.</div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => setConfirmDelete(null)}
+                    style={{ background: T.white, color: T.gray600, border: `1px solid ${T.gray200}`, padding: '8px 16px', fontSize: '11px', fontWeight: 800, cursor: 'pointer', fontFamily: F }}>
+                    Cancel
                   </button>
-                  <button onClick={() => act(d.id, 'approve')}
-                    disabled={!!acting[d.id]}
-                    style={{ background: T.green, color: T.white, border: 'none', padding: '7px 14px', fontSize: '11px', fontWeight: 800, cursor: 'pointer', fontFamily: F, opacity: acting[d.id] ? 0.6 : 1 }}>
-                    {acting[d.id] === 'approve' ? 'Approving…' : 'Approve ✓'}
+                  <button onClick={() => deleteDepot(d.id)}
+                    disabled={!!deleting[d.id]}
+                    style={{ background: T.red, color: T.white, border: 'none', padding: '8px 16px', fontSize: '11px', fontWeight: 800, cursor: deleting[d.id] ? 'not-allowed' : 'pointer', fontFamily: F, opacity: deleting[d.id] ? 0.6 : 1 }}>
+                    {deleting[d.id] ? 'Deleting…' : 'Confirm Delete'}
                   </button>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
             {showReject[d.id] && (
               <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${T.gray100}` }}>
                 <input value={rejectReason[d.id] || ''} onChange={e => setRejectReason(r => ({ ...r, [d.id]: e.target.value }))}
